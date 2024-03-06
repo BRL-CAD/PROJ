@@ -154,6 +154,7 @@ CREATE TABLE geodetic_datum (
     frame_reference_epoch FLOAT, --- only set for dynamic datum, and should be set when it is a dynamic datum
     ensemble_accuracy FLOAT CHECK (ensemble_accuracy IS NULL OR ensemble_accuracy > 0), --- only for a datum ensemble. and should be set when it is a datum ensemble
     anchor TEXT,
+    anchor_epoch FLOAT,
     deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
     CONSTRAINT pk_geodetic_datum PRIMARY KEY (auth_name, code),
     CONSTRAINT fk_geodetic_datum_ellipsoid FOREIGN KEY (ellipsoid_auth_name, ellipsoid_code) REFERENCES ellipsoid(auth_name, code) ON DELETE CASCADE,
@@ -191,6 +192,7 @@ CREATE TABLE vertical_datum (
     frame_reference_epoch FLOAT, --- only set for dynamic datum, and should be set when it is a dynamic datum
     ensemble_accuracy FLOAT CHECK (ensemble_accuracy IS NULL OR ensemble_accuracy > 0), --- only for a datum ensemble. and should be set when it is a datum ensemble
     anchor TEXT,
+    anchor_epoch FLOAT,
     deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
     CONSTRAINT pk_vertical_datum PRIMARY KEY (auth_name, code)
 ) WITHOUT ROWID;
@@ -506,6 +508,7 @@ BEGIN
             'EPSG_1102_Lambert Conic Conformal (1SP variant B)',
             'EPSG_1111_Transverse Mercator 3D',
             'EPSG_1119_Equidistant Conic',
+            'EPSG_1125_Azimuthal Equidistant',
             'EPSG_9602_Geographic/geocentric conversions',
             'EPSG_9659_Geographic3D to 2D conversion',
             'EPSG_9801_Lambert Conic Conformal (1SP)',
@@ -775,6 +778,34 @@ FOR EACH ROW BEGIN
 
     SELECT RAISE(ABORT, 'insert on compound_crs violates constraint: vertical_crs must not be deprecated when compound_crs is not deprecated')
         WHERE EXISTS (SELECT 1 FROM vertical_crs WHERE vertical_crs.auth_name = NEW.vertical_crs_auth_name AND vertical_crs.code = NEW.vertical_crs_code AND vertical_crs.deprecated != 0) AND NEW.deprecated = 0;
+END;
+
+CREATE TABLE coordinate_metadata(
+    auth_name TEXT NOT NULL CHECK (length(auth_name) >= 1),
+    code INTEGER_OR_TEXT NOT NULL CHECK (length(code) >= 1),
+    description TEXT,
+    crs_auth_name TEXT,
+    crs_code INTEGER_OR_TEXT,
+    crs_text_definition TEXT, -- WKT string or PROJJSON string. Mutually exclusive with (crs_auth_name, crs_code)
+    coordinate_epoch DOUBLE, -- may be NULL
+    deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
+    CONSTRAINT pk_coordinate_metadata PRIMARY KEY (auth_name, code)
+) WITHOUT ROWID;
+
+CREATE TRIGGER coordinate_metadata_insert_trigger
+BEFORE INSERT ON coordinate_metadata
+FOR EACH ROW BEGIN
+    SELECT RAISE(ABORT, 'insert on coordinate_metadata violates constraint: (crs_auth_name, crs_code) must already exist in crs_view')
+        WHERE NOT EXISTS (
+            SELECT 1 FROM crs_view WHERE
+                NEW.crs_auth_name IS NOT NULL AND
+                crs_view.auth_name = NEW.crs_auth_name AND
+                crs_view.code = NEW.crs_code
+            UNION ALL SELECT 1 WHERE NEW.crs_auth_name IS NULL);
+    SELECT RAISE(ABORT, 'insert on coordinate_metadata violates constraint: (crs_auth_name, crs_code) and crs_text_definition are mutually exclusive')
+        WHERE NEW.crs_auth_name IS NOT NULL AND NEW.crs_text_definition IS NOT NULL;
+    SELECT RAISE(ABORT, 'insert on coordinate_metadata violates constraint: one of (crs_auth_name, crs_code) or crs_text_definition must be set')
+        WHERE NEW.crs_auth_name IS NULL AND NEW.crs_text_definition IS NULL;
 END;
 
 CREATE TABLE coordinate_operation_method(
@@ -1353,8 +1384,6 @@ FOR EACH ROW BEGIN
         WHERE NOT EXISTS (SELECT 1 FROM object_view o WHERE o.table_name = NEW.table_name AND o.auth_name = NEW.auth_name AND o.code = NEW.code);
 END;
 
--- For ESRI stuff
--- typically deprecated is the 'wkid' column of deprecated = 'yes' entries in the .csv files, and non_deprecates is the 'latestWkid' column
 -- For EPSG, used to track superseded coordinate operations.
 CREATE TABLE supersession(
     superseded_table_name TEXT NOT NULL CHECK (superseded_table_name IN (

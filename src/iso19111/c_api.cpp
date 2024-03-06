@@ -197,7 +197,7 @@ PJ *pj_obj_create(PJ_CONTEXT *ctx, const BaseObjectNNPtr &objIn) {
         auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
         try {
             auto formatter = PROJStringFormatter::create(
-                PROJStringFormatter::Convention::PROJ_5, dbContext);
+                PROJStringFormatter::Convention::PROJ_5, std::move(dbContext));
             auto projString = coordop->exportToPROJString(formatter.get());
             if (proj_context_is_network_enabled(ctx)) {
                 ctx->defer_grid_opening = true;
@@ -208,13 +208,15 @@ PJ *pj_obj_create(PJ_CONTEXT *ctx, const BaseObjectNNPtr &objIn) {
                 pj->iso_obj = objIn;
                 pj->iso_obj_is_coordinate_operation = true;
                 auto sourceEpoch = coordop->sourceCoordinateEpoch();
+                auto targetEpoch = coordop->targetCoordinateEpoch();
                 if (sourceEpoch.has_value()) {
-                    pj->hasCoordinateEpoch = true;
-                    pj->coordinateEpoch =
-                        sourceEpoch->coordinateEpoch().convertToUnit(
-                            common::UnitOfMeasure::YEAR);
+                    if (!targetEpoch.has_value()) {
+                        pj->hasCoordinateEpoch = true;
+                        pj->coordinateEpoch =
+                            sourceEpoch->coordinateEpoch().convertToUnit(
+                                common::UnitOfMeasure::YEAR);
+                    }
                 } else {
-                    auto targetEpoch = coordop->targetCoordinateEpoch();
                     if (targetEpoch.has_value()) {
                         pj->hasCoordinateEpoch = true;
                         pj->coordinateEpoch =
@@ -378,7 +380,7 @@ const char *proj_context_get_database_path(PJ_CONTEXT *ctx) {
     try {
         // temporary variable must be used as getDBcontext() might create
         // ctx->cpp_context
-        auto osPath(getDBcontext(ctx)->getPath());
+        const std::string osPath(getDBcontext(ctx)->getPath());
         ctx->get_cpp_context()->lastDbPath_ = osPath;
         return ctx->cpp_context->lastDbPath_.c_str();
     } catch (const std::exception &e) {
@@ -1627,7 +1629,7 @@ const char *proj_as_wkt(PJ_CONTEXT *ctx, const PJ *obj, PJ_WKT_TYPE type,
 
     try {
         auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
-        auto formatter = WKTFormatter::create(convention, dbContext);
+        auto formatter = WKTFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1733,7 +1735,8 @@ const char *proj_as_proj_string(PJ_CONTEXT *ctx, const PJ *obj,
         static_cast<PROJStringFormatter::Convention>(type);
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = PROJStringFormatter::create(convention, dbContext);
+        auto formatter =
+            PROJStringFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1805,7 +1808,7 @@ const char *proj_as_projjson(PJ_CONTEXT *ctx, const PJ *obj,
 
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = JSONFormatter::create(dbContext);
+        auto formatter = JSONFormatter::create(std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1936,8 +1939,6 @@ int proj_get_area_of_use(PJ_CONTEXT *ctx, const PJ *obj,
 // ---------------------------------------------------------------------------
 
 /** \brief Return the area of use of an object.
- *
- * In case of multiple usages, this will be the one of first usage.
  *
  * @param ctx PROJ context, or NULL for default context
  * @param obj Object (must not be NULL)
@@ -4155,18 +4156,44 @@ PJ *proj_crs_promote_to_3D(PJ_CONTEXT *ctx, const char *crs_3D_name,
     }
     auto cpp_2D_crs = dynamic_cast<const CRS *>(crs_2D->iso_obj.get());
     if (!cpp_2D_crs) {
-        proj_log_error(ctx, __FUNCTION__, "crs_2D is not a CRS");
-        return nullptr;
-    }
-    try {
-        auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
-        return pj_obj_create(
-            ctx, cpp_2D_crs->promoteTo3D(crs_3D_name ? std::string(crs_3D_name)
-                                                     : cpp_2D_crs->nameStr(),
-                                         dbContext));
-    } catch (const std::exception &e) {
-        proj_log_error(ctx, __FUNCTION__, e.what());
-        return nullptr;
+        auto coordinateMetadata =
+            dynamic_cast<const CoordinateMetadata *>(crs_2D->iso_obj.get());
+        if (!coordinateMetadata) {
+            proj_log_error(ctx, __FUNCTION__,
+                           "crs_2D is not a CRS or a CoordinateMetadata");
+            return nullptr;
+        }
+
+        try {
+            auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
+            auto crs = coordinateMetadata->crs();
+            auto crs_3D = crs->promoteTo3D(
+                crs_3D_name ? std::string(crs_3D_name) : crs->nameStr(),
+                dbContext);
+            if (coordinateMetadata->coordinateEpoch().has_value()) {
+                return pj_obj_create(
+                    ctx, CoordinateMetadata::create(
+                             crs_3D,
+                             coordinateMetadata->coordinateEpochAsDecimalYear(),
+                             dbContext));
+            } else {
+                return pj_obj_create(ctx, CoordinateMetadata::create(crs_3D));
+            }
+        } catch (const std::exception &e) {
+            proj_log_error(ctx, __FUNCTION__, e.what());
+            return nullptr;
+        }
+    } else {
+        try {
+            auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
+            return pj_obj_create(ctx, cpp_2D_crs->promoteTo3D(
+                                          crs_3D_name ? std::string(crs_3D_name)
+                                                      : cpp_2D_crs->nameStr(),
+                                          dbContext));
+        } catch (const std::exception &e) {
+            proj_log_error(ctx, __FUNCTION__, e.what());
+            return nullptr;
+        }
     }
 }
 
@@ -4653,12 +4680,13 @@ static CoordinateSystemAxisNNPtr createAxis(const PJ_AXIS_DESCRIPTION &axis) {
         unit_type = UnitOfMeasure::Type::PARAMETRIC;
         break;
     }
-    auto unit = axis.unit_type == PJ_UT_ANGULAR
-                    ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
-                : axis.unit_type == PJ_UT_LINEAR
-                    ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
-                    : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
-                                    axis.unit_conv_factor, unit_type);
+    const common::UnitOfMeasure unit(
+        axis.unit_type == PJ_UT_ANGULAR
+            ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
+        : axis.unit_type == PJ_UT_LINEAR
+            ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
+            : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
+                            axis.unit_conv_factor, unit_type));
 
     return CoordinateSystemAxis::create(
         createPropertyMapName(axis.name),
@@ -5180,7 +5208,7 @@ PJ *proj_create_conversion_two_point_equidistant(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @deprecated. Replaced by proj_create_conversion_tunisia_mining_grid
+ * @since 9.2
  */
 PJ *proj_create_conversion_tunisia_mining_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -5214,7 +5242,7 @@ PJ *proj_create_conversion_tunisia_mining_grid(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @since 9.2
+ * @deprecated Replaced by proj_create_conversion_tunisia_mining_grid
  */
 PJ *proj_create_conversion_tunisia_mapping_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -8440,22 +8468,19 @@ proj_create_operations(PJ_CONTEXT *ctx, const PJ *source_crs,
         }
     }
 
-    if (sourceCoordinateMetadata != nullptr &&
-        targetCoordinateMetadata != nullptr) {
-        proj_log_error(ctx, __FUNCTION__,
-                       "CoordinateMetadata with epoch to CoordinateMetadata "
-                       "with epoch not supported currently");
-        return nullptr;
-    }
-
     try {
         auto factory = CoordinateOperationFactory::create();
         std::vector<IdentifiedObjectNNPtr> objects;
         auto ops = sourceCoordinateMetadata != nullptr
-                       ? factory->createOperations(
-                             NN_NO_CHECK(sourceCoordinateMetadata),
-                             NN_NO_CHECK(targetCRS),
-                             operationContext->operationContext)
+                       ? (targetCoordinateMetadata != nullptr
+                              ? factory->createOperations(
+                                    NN_NO_CHECK(sourceCoordinateMetadata),
+                                    NN_NO_CHECK(targetCoordinateMetadata),
+                                    operationContext->operationContext)
+                              : factory->createOperations(
+                                    NN_NO_CHECK(sourceCoordinateMetadata),
+                                    NN_NO_CHECK(targetCRS),
+                                    operationContext->operationContext))
                    : targetCoordinateMetadata != nullptr
                        ? factory->createOperations(
                              NN_NO_CHECK(sourceCRS),
@@ -9541,6 +9566,36 @@ proj_get_geoid_models_from_database(PJ_CONTEXT *ctx, const char *auth_name,
 
 // ---------------------------------------------------------------------------
 
+/** \brief Instanciate a CoordinateMetadata object
+ *
+ * @since 9.4
+ */
+
+PJ *proj_coordinate_metadata_create(PJ_CONTEXT *ctx, const PJ *crs,
+                                    double epoch) {
+    SANITIZE_CTX(ctx);
+    if (!crs) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return nullptr;
+    }
+    auto crsCast = std::dynamic_pointer_cast<CRS>(crs->iso_obj);
+    if (!crsCast) {
+        proj_log_error(ctx, __FUNCTION__, "Object is not a CRS");
+        return nullptr;
+    }
+    try {
+        auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
+        return pj_obj_create(ctx, CoordinateMetadata::create(
+                                      NN_NO_CHECK(crsCast), epoch, dbContext));
+    } catch (const std::exception &e) {
+        proj_log_debug(ctx, __FUNCTION__, e.what());
+        return nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /** \brief Return the coordinate epoch associated with a CoordinateMetadata.
  *
  * It may return a NaN value if there is no associated coordinate epoch.
@@ -9567,3 +9622,35 @@ double proj_coordinate_metadata_get_epoch(PJ_CONTEXT *ctx, const PJ *obj) {
 }
 
 // ---------------------------------------------------------------------------
+
+/** \brief Return whether a CRS has an associated PointMotionOperation
+ *
+ * @since 9.4
+ */
+int proj_crs_has_point_motion_operation(PJ_CONTEXT *ctx, const PJ *crs) {
+    SANITIZE_CTX(ctx);
+    if (!crs) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return false;
+    }
+    auto l_crs = dynamic_cast<const CRS *>(crs->iso_obj.get());
+    if (!l_crs) {
+        proj_log_error(ctx, __FUNCTION__, "Object is not a CRS");
+        return false;
+    }
+    auto geodeticCRS = l_crs->extractGeodeticCRS();
+    if (!geodeticCRS)
+        return false;
+    try {
+        auto factory =
+            AuthorityFactory::create(getDBcontext(ctx), std::string());
+        return !factory
+                    ->getPointMotionOperationsFor(NN_NO_CHECK(geodeticCRS),
+                                                  false)
+                    .empty();
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return false;
+}

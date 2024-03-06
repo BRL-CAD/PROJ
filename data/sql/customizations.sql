@@ -188,6 +188,236 @@ INSERT INTO usage SELECT
     scope_code
     FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '9123';
 
+-- Canadian transformations: duplicate EPSG:10518, 10519, 10520, 10116, 10117, 10118 with NAD83(CSRS)v7 as interpolation CRS
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10518_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10518';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_1058_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10518_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10518';
+
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10519_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10519';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_10519_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10519_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10519';
+
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10520_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10520';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_10520_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10520_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10520';
+
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10116_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10116';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_10116_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10116_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10116';
+
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10117_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10117';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_10117_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10117_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10117';
+
+INSERT INTO grid_transformation SELECT
+    'PROJ' AS auth_name,
+    'EPSG_10118_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    name,
+    description || ' Specifies NAD83(CSRS)v7 (code 8255) as interpolation CRS.' AS description,
+    method_auth_name,
+    method_code,
+    method_name,
+    source_crs_auth_name,
+    source_crs_code,
+    target_crs_auth_name,
+    target_crs_code,
+    accuracy,
+    grid_param_auth_name,
+    grid_param_code,
+    grid_param_name,
+    grid_name,
+    grid2_param_auth_name,
+    grid2_param_code,
+    grid2_param_name,
+    grid2_name,
+    'EPSG' AS interpolation_crs_auth_name,
+    8255 AS interpolation_crs_code,
+    operation_version,
+    0 AS deprecated
+    FROM grid_transformation WHERE auth_name = 'EPSG' AND code = '10118';
+INSERT INTO usage SELECT
+    'PROJ' AS auth_name,
+    'USAGE_PROJ_EPSG_10118_WITH_NAD83CSRSV7_INTERPOLATION' AS code,
+    object_table_name,
+    'PROJ' AS object_auth_name,
+    'EPSG_10118_WITH_NAD83CSRSV7_INTERPOLATION' AS object_code,
+    extent_auth_name,
+    extent_code,
+    scope_auth_name,
+    scope_code
+    FROM usage WHERE object_table_name = 'grid_transformation' AND object_auth_name = 'EPSG' AND object_code = '10118';
+
+
 -- Define the allowed authorities, and their precedence, when researching a
 -- coordinate operation
 
@@ -333,7 +563,7 @@ JOIN compound_crs c ON gt.target_crs_code = c.code AND gt.target_crs_auth_name =
 JOIN geodetic_crs gcrs ON gt.source_crs_auth_name = gcrs.auth_name AND gt.source_crs_code = gcrs.code
 JOIN vertical_crs vcrs on vcrs.auth_name = c.vertical_crs_auth_name AND vcrs.code = c.vertical_crs_code
 WHERE method_auth_name = 'EPSG' AND method_name LIKE 'Geog3D to Geog2D+%'
-AND NOT EXISTS (SELECT 1 FROM grid_transformation gt2 WHERE gt2.method_name LIKE 'Geographic3D to%' AND gt2.source_crs_auth_name = gt.source_crs_auth_name AND gt2.source_crs_code = gt.source_crs_code AND gt2.target_crs_auth_name = vcrs.auth_name AND gt2.target_crs_code = vcrs.code)
+AND NOT EXISTS (SELECT 1 FROM grid_transformation gt2 WHERE gt2.method_name LIKE 'Geographic3D to%' AND gt2.source_crs_auth_name = gt.source_crs_auth_name AND gt2.source_crs_code = gt.source_crs_code AND gt2.target_crs_auth_name = vcrs.auth_name AND gt2.target_crs_code = vcrs.code AND gt2.grid_name = gt.grid_name)
 AND gt.deprecated = 0;
 
 INSERT INTO "usage"

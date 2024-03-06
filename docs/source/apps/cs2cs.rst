@@ -15,6 +15,7 @@ Synopsis
     |           [[--area <name_or_code>] | [--bbox <west_long,south_lat,east_long,north_lat>]]
     |           [--authority <name>] [--3d]
     |           [--accuracy <accuracy>] [--only-best[=yes|=no]] [--no-ballpark]
+    |           [--s_epoch {epoch}] [--t_epoch {epoch}]
     |           ([*+opt[=arg]* ...] [+to *+opt[=arg]* ...] | {source_crs} {target_crs})
     |           file ...
 
@@ -102,6 +103,12 @@ The following control parameters can appear in any order:
 .. option:: -le
 
     List of all ellipsoids that can be selected with the *+ellps* parameters.
+
+.. option:: -lm
+
+    List of hard-coded prime meridians that can be selected with the *+pm*
+    parameter.  Note that this list is no longer updated,
+    and some values may conflict with other sources.
 
 .. option:: -lu
 
@@ -223,6 +230,20 @@ The following control parameters can appear in any order:
     especially before PROJ 9.1, a mix of 2D and 3D CRS could lead to 2D or 3D
     transformations. Starting with PROJ 9.1, both CRS need to be 3D for vertical
     transformation to possibly happen.
+
+.. option:: --s_epoch
+
+    .. versionadded:: 9.4
+
+    Epoch of coordinates in the source CRS, as decimal year.
+    Only applies to a dynamic CRS.
+
+.. option:: --t_epoch
+
+    .. versionadded:: 9.4
+
+    Epoch of coordinates in the target CRS, as decimal year.
+    Only applies to a dynamic CRS.
 
 .. only:: man
 

@@ -1792,6 +1792,211 @@ TEST(wkt_parse, wkt1_krovak_north_oriented) {
 
 // ---------------------------------------------------------------------------
 
+TEST(wkt_parse, wkt2_krovak_modified_south_west) {
+    auto wkt =
+        "PROJCRS[\"S-JTSK/05 / Modified Krovak\",\n"
+        "    BASEGEOGCRS[\"S-JTSK/05\",\n"
+        "        DATUM[\"System of the Unified Trigonometrical Cadastral "
+        "Network/05\",\n"
+        "            ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,\n"
+        "                LENGTHUNIT[\"metre\",1]]],\n"
+        "        PRIMEM[\"Greenwich\",0,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "        ID[\"EPSG\",5228]],\n"
+        "    CONVERSION[\"Modified Krovak (Greenwich)\",\n"
+        "        METHOD[\"Krovak Modified\",\n"
+        "            ID[\"EPSG\",1042]],\n"
+        "        PARAMETER[\"Latitude of projection centre\",49.5,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8811]],\n"
+        "        PARAMETER[\"Longitude of origin\",24.8333333333333,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8833]],\n"
+        "        PARAMETER[\"Co-latitude of cone axis\",30.2881397222222,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",1036]],\n"
+        "        PARAMETER[\"Latitude of pseudo standard parallel\",78.5,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8818]],\n"
+        "        PARAMETER[\"Scale factor on pseudo standard "
+        "parallel\",0.9999,\n"
+        "            SCALEUNIT[\"unity\",1],\n"
+        "            ID[\"EPSG\",8819]],\n"
+        "        PARAMETER[\"False easting\",5000000,\n"
+        "            LENGTHUNIT[\"metre\",1],\n"
+        "            ID[\"EPSG\",8806]],\n"
+        "        PARAMETER[\"False northing\",5000000,\n"
+        "            LENGTHUNIT[\"metre\",1],\n"
+        "            ID[\"EPSG\",8807]]],\n"
+        "    CS[Cartesian,2],\n"
+        "        AXIS[\"southing (X)\",south,\n"
+        "            ORDER[1],\n"
+        "            LENGTHUNIT[\"metre\",1]],\n"
+        "        AXIS[\"westing (Y)\",west,\n"
+        "            ORDER[2],\n"
+        "            LENGTHUNIT[\"metre\",1]],\n"
+        "    USAGE[\n"
+        "        SCOPE[\"Engineering survey, topographic mapping.\"],\n"
+        "        AREA[\"Czechia.\"],\n"
+        "        BBOX[48.58,12.09,51.06,18.86]],\n"
+        "    ID[\"EPSG\",5515]]";
+
+    auto obj = WKTParser().createFromWKT(wkt);
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+
+    EXPECT_EQ(crs->derivingConversion()->method()->nameStr(),
+              "Krovak Modified");
+
+    EXPECT_EQ(
+        crs->exportToWKT(
+            WKTFormatter::create(WKTFormatter::Convention::WKT2_2019).get()),
+        wkt);
+
+    auto projString =
+        crs->exportToPROJString(PROJStringFormatter::create().get());
+    auto expectedPROJString =
+        "+proj=mod_krovak +axis=swu +lat_0=49.5 +lon_0=24.8333333333333 "
+        "+alpha=30.2881397222222 +k=0.9999 +x_0=5000000 +y_0=5000000 "
+        "+ellps=bessel +units=m +no_defs +type=crs";
+    EXPECT_EQ(projString, expectedPROJString);
+
+    obj = PROJStringParser().createFromPROJString(projString);
+    auto crs2 = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs2 != nullptr);
+    auto wkt2 = crs2->exportToWKT(WKTFormatter::create().get());
+    EXPECT_TRUE(wkt2.find("METHOD[\"Krovak Modified\"") != std::string::npos)
+        << wkt2;
+    EXPECT_TRUE(
+        wkt2.find("PARAMETER[\"Latitude of pseudo standard parallel\",78.5,") !=
+        std::string::npos)
+        << wkt2;
+    EXPECT_TRUE(
+        wkt2.find("PARAMETER[\"Co-latitude of cone axis\",30.2881397222222,") !=
+        std::string::npos)
+        << wkt2;
+    EXPECT_EQ(crs2->exportToPROJString(PROJStringFormatter::create().get()),
+              expectedPROJString);
+
+    obj = PROJStringParser().createFromPROJString(
+        "+type=crs +proj=pipeline +step +proj=unitconvert +xy_in=deg "
+        "+xy_out=rad "
+        "+step +proj=mod_krovak +lat_0=49.5 "
+        "+lon_0=24.8333333333333 +alpha=30.2881397222222 "
+        "+k=0.9999 +x_0=5000000 +y_0=5000000 +ellps=bessel "
+        "+step +proj=axisswap +order=-2,-1");
+    crs2 = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs2 != nullptr);
+    wkt2 = crs2->exportToWKT(WKTFormatter::create().get());
+    EXPECT_TRUE(wkt2.find("METHOD[\"Krovak Modified\"") != std::string::npos)
+        << wkt2;
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(wkt_parse, wkt2_krovak_modified_east_north) {
+    auto wkt =
+        "PROJCRS[\"S-JTSK/05 / Modified Krovak East North\",\n"
+        "    BASEGEOGCRS[\"S-JTSK/05\",\n"
+        "        DATUM[\"System of the Unified Trigonometrical Cadastral "
+        "Network/05\",\n"
+        "            ELLIPSOID[\"Bessel 1841\",6377397.155,299.1528128,\n"
+        "                LENGTHUNIT[\"metre\",1]]],\n"
+        "        PRIMEM[\"Greenwich\",0,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "        ID[\"EPSG\",5228]],\n"
+        "    CONVERSION[\"Modified Krovak East North (Greenwich)\",\n"
+        "        METHOD[\"Krovak Modified (North Orientated)\",\n"
+        "            ID[\"EPSG\",1043]],\n"
+        "        PARAMETER[\"Latitude of projection centre\",49.5,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8811]],\n"
+        "        PARAMETER[\"Longitude of origin\",24.8333333333333,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8833]],\n"
+        "        PARAMETER[\"Co-latitude of cone axis\",30.2881397222222,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",1036]],\n"
+        "        PARAMETER[\"Latitude of pseudo standard parallel\",78.5,\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "            ID[\"EPSG\",8818]],\n"
+        "        PARAMETER[\"Scale factor on pseudo standard "
+        "parallel\",0.9999,\n"
+        "            SCALEUNIT[\"unity\",1],\n"
+        "            ID[\"EPSG\",8819]],\n"
+        "        PARAMETER[\"False easting\",5000000,\n"
+        "            LENGTHUNIT[\"metre\",1],\n"
+        "            ID[\"EPSG\",8806]],\n"
+        "        PARAMETER[\"False northing\",5000000,\n"
+        "            LENGTHUNIT[\"metre\",1],\n"
+        "            ID[\"EPSG\",8807]]],\n"
+        "    CS[Cartesian,2],\n"
+        "        AXIS[\"easting (X)\",east,\n"
+        "            ORDER[1],\n"
+        "            LENGTHUNIT[\"metre\",1]],\n"
+        "        AXIS[\"northing (Y)\",north,\n"
+        "            ORDER[2],\n"
+        "            LENGTHUNIT[\"metre\",1]],\n"
+        "    USAGE[\n"
+        "        SCOPE[\"GIS.\"],\n"
+        "        AREA[\"Czechia.\"],\n"
+        "        BBOX[48.58,12.09,51.06,18.86]],\n"
+        "    ID[\"EPSG\",5516]]";
+
+    auto obj = WKTParser().createFromWKT(wkt);
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+
+    EXPECT_EQ(crs->derivingConversion()->method()->nameStr(),
+              "Krovak Modified (North Orientated)");
+
+    EXPECT_EQ(
+        crs->exportToWKT(
+            WKTFormatter::create(WKTFormatter::Convention::WKT2_2019).get()),
+        wkt);
+
+    auto projString =
+        crs->exportToPROJString(PROJStringFormatter::create().get());
+    auto expectedPROJString =
+        "+proj=mod_krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+        "+alpha=30.2881397222222 +k=0.9999 +x_0=5000000 +y_0=5000000 "
+        "+ellps=bessel +units=m +no_defs +type=crs";
+    EXPECT_EQ(projString, expectedPROJString);
+
+    obj = PROJStringParser().createFromPROJString(projString);
+    auto crs2 = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs2 != nullptr);
+    auto wkt2 = crs2->exportToWKT(WKTFormatter::create().get());
+    EXPECT_TRUE(wkt2.find("METHOD[\"Krovak Modified (North Orientated)\"") !=
+                std::string::npos)
+        << wkt2;
+    EXPECT_TRUE(
+        wkt2.find("PARAMETER[\"Latitude of pseudo standard parallel\",78.5,") !=
+        std::string::npos)
+        << wkt2;
+    EXPECT_TRUE(
+        wkt2.find("PARAMETER[\"Co-latitude of cone axis\",30.2881397222222,") !=
+        std::string::npos)
+        << wkt2;
+    EXPECT_EQ(crs2->exportToPROJString(PROJStringFormatter::create().get()),
+              expectedPROJString);
+
+    obj = PROJStringParser().createFromPROJString(
+        "+type=crs +proj=pipeline +step +proj=unitconvert +xy_in=deg "
+        "+xy_out=rad "
+        "+step +proj=mod_krovak +lat_0=49.5 "
+        "+lon_0=24.8333333333333 +alpha=30.2881397222222 "
+        "+k=0.9999 +x_0=5000000 +y_0=5000000 +ellps=bessel");
+    crs2 = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs2 != nullptr);
+    wkt2 = crs2->exportToWKT(WKTFormatter::create().get());
+    EXPECT_TRUE(wkt2.find("METHOD[\"Krovak Modified (North Orientated)\"") !=
+                std::string::npos)
+        << wkt2;
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(wkt_parse, wkt1_polar_stereographic_latitude_of_origin_70) {
     auto wkt = "PROJCS[\"unknown\",\n"
                "    GEOGCS[\"unknown\",\n"
@@ -6684,7 +6889,7 @@ static const struct {
       {"False_Northing", 2},
       {"Central_Meridian", 3},
       {"Latitude_Of_Origin", 4}},
-     "Modified Azimuthal Equidistant",
+     "Azimuthal Equidistant",
      {
          {"Latitude of natural origin", 4},
          {"Longitude of natural origin", 3},
@@ -9810,6 +10015,93 @@ TEST(io, projstringformatter_optim_as_uc_vgridshift_uc_as_push_as_uc) {
 
 // ---------------------------------------------------------------------------
 
+TEST(io, projstringformatter_krovak_to_krovak_east_north) {
+    // Working case
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +axis=swu +lat_0=49.5 "
+            "+lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel");
+        EXPECT_EQ(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+
+    // Missing parameter
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +axis=swu +lat_0=49.5 "
+            "+lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 ");
+        // Not equal
+        EXPECT_NE(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+
+    // Different parameter values
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +axis=swu +lat_0=49.5 "
+            "+lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +lat_0=FOO +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel");
+        // Not equal
+        EXPECT_NE(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projstringformatter_krovak_east_north_to_krovak) {
+    // Working case
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +axis=swu +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel");
+        EXPECT_EQ(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+
+    // Missing parameter
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +axis=swu +lat_0=FOO +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0");
+        // Not equal
+        EXPECT_NE(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+
+    // Different parameter values
+    {
+        auto fmt = PROJStringFormatter::create();
+        fmt->ingestPROJString(
+            "+proj=pipeline "
+            "+step +inv +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel "
+            "+step +proj=krovak +axis=swu +lat_0=FOO +lon_0=24.8333333333333 "
+            "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel");
+        // Not equal
+        EXPECT_NE(fmt->toString(), "+proj=axisswap +order=-2,-1");
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(io, projparse_longlat) {
 
     auto expected = "GEODCRS[\"unknown\",\n"
@@ -11114,6 +11406,68 @@ TEST(io, projparse_krovak_czech) {
     crs->exportToWKT(f.get());
     auto wkt = f->toString();
     EXPECT_TRUE(wkt.find("METHOD[\"Krovak\",ID[\"EPSG\",9819]]") !=
+                std::string::npos)
+        << wkt;
+    EXPECT_TRUE(wkt.find(",AXIS[\"westing\",west,ORDER[1]") !=
+                std::string::npos)
+        << wkt;
+    EXPECT_TRUE(wkt.find(",AXIS[\"southing\",south,ORDER[2]") !=
+                std::string::npos)
+        << wkt;
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projparse_krovak_modified) {
+    auto obj =
+        PROJStringParser().createFromPROJString("+proj=mod_krovak +type=crs");
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+    WKTFormatterNNPtr f(WKTFormatter::create());
+    f->simulCurNodeHasId();
+    f->setMultiLine(false);
+    crs->exportToWKT(f.get());
+    auto wkt = f->toString();
+    EXPECT_TRUE(wkt.find("METHOD[\"Krovak Modified (North "
+                         "Orientated)\",ID[\"EPSG\",1043]]") !=
+                std::string::npos)
+        << wkt;
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projparse_krovak_modified_axis_swu) {
+    auto obj = PROJStringParser().createFromPROJString(
+        "+proj=mod_krovak +axis=swu +type=crs");
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+    WKTFormatterNNPtr f(WKTFormatter::create());
+    f->simulCurNodeHasId();
+    f->setMultiLine(false);
+    crs->exportToWKT(f.get());
+    auto wkt = f->toString();
+    EXPECT_TRUE(wkt.find("METHOD[\"Krovak Modified\",ID[\"EPSG\",1042]]") !=
+                std::string::npos)
+        << wkt;
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projparse_krovak_modified_czech) {
+    auto obj = PROJStringParser().createFromPROJString(
+        "+proj=mod_krovak +czech +x_0=5000000 +y_0=5000000 +type=crs");
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+    EXPECT_EQ(crs->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=mod_krovak +czech +lat_0=49.5 +lon_0=24.8333333333333 "
+              "+alpha=30.2881397527778 +k=0.9999 +x_0=5000000 +y_0=5000000 "
+              "+ellps=bessel +units=m +no_defs +type=crs");
+    WKTFormatterNNPtr f(WKTFormatter::create());
+    f->simulCurNodeHasId();
+    f->setMultiLine(false);
+    crs->exportToWKT(f.get());
+    auto wkt = f->toString();
+    EXPECT_TRUE(wkt.find("METHOD[\"Krovak Modified\",ID[\"EPSG\",1042]]") !=
                 std::string::npos)
         << wkt;
     EXPECT_TRUE(wkt.find(",AXIS[\"westing\",west,ORDER[1]") !=
@@ -12959,6 +13313,14 @@ TEST(io, createFromUserInput) {
     {
         // Allow spaces before and after @
         auto obj = createFromUserInput("ITRF2014 @ 2025.1", dbContext);
+        auto coordinateMetadata =
+            nn_dynamic_pointer_cast<CoordinateMetadata>(obj);
+        ASSERT_TRUE(coordinateMetadata != nullptr);
+        EXPECT_EQ(coordinateMetadata->coordinateEpochAsDecimalYear(), 2025.1);
+    }
+
+    {
+        auto obj = createFromUserInput("EPSG:9000 @ 2025.1", dbContext);
         auto coordinateMetadata =
             nn_dynamic_pointer_cast<CoordinateMetadata>(obj);
         ASSERT_TRUE(coordinateMetadata != nullptr);
@@ -17157,4 +17519,130 @@ TEST(io, EXTENSION_PROJ4) {
                                "+datum=NAD27 +zone=11 +over. Suffix");
     EXPECT_EQ(crs3->exportToPROJString(PROJStringFormatter::create().get()),
               "+proj=utm +datum=NAD27 +zone=11 +over +type=crs");
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(wkt_parse, PointMotionOperation) {
+    auto wkt =
+        "POINTMOTIONOPERATION[\"Canada velocity grid v7\",\n"
+        "    SOURCECRS[\n"
+        "        GEOGCRS[\"NAD83(CSRS)v7\",\n"
+        "            DATUM[\"North American Datum of 1983 (CSRS) version 7\",\n"
+        "                ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
+        "                    LENGTHUNIT[\"metre\",1]]],\n"
+        "            PRIMEM[\"Greenwich\",0,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "            CS[ellipsoidal,3],\n"
+        "                AXIS[\"geodetic latitude (Lat)\",north,\n"
+        "                    ORDER[1],\n"
+        "                    ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "                AXIS[\"geodetic longitude (Lon)\",east,\n"
+        "                    ORDER[2],\n"
+        "                    ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "                AXIS[\"ellipsoidal height (h)\",up,\n"
+        "                    ORDER[3],\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "            ID[\"EPSG\",8254]]],\n"
+        "    METHOD[\"Point motion by grid (Canada NTv2_Vel)\",\n"
+        "        ID[\"EPSG\",1070]],\n"
+        "    PARAMETERFILE[\"Point motion velocity grid file\",\"foo.tif\"],\n"
+        "    OPERATIONACCURACY[0.01],\n"
+        "    USAGE[\n"
+        "        SCOPE[\"scope\"],\n"
+        "        AREA[\"area\"],\n"
+        "        BBOX[38.21,-141.01,86.46,-40.73]],\n"
+        "    ID[\"DERIVED_FROM(EPSG)\",9483],\n"
+        "    REMARK[\"remark.\"]]";
+
+    auto obj = WKTParser().createFromWKT(wkt);
+    auto pmo = nn_dynamic_pointer_cast<PointMotionOperation>(obj);
+    ASSERT_TRUE(pmo != nullptr);
+    EXPECT_EQ(
+        pmo->exportToWKT(
+            WKTFormatter::create(WKTFormatter::Convention::WKT2_2019).get()),
+        wkt);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(json_import, PointMotionOperation) {
+    auto json =
+        "{\n"
+        "  \"$schema\": \"foo\",\n"
+        "  \"type\": \"PointMotionOperation\",\n"
+        "  \"name\": \"Canada velocity grid v7\",\n"
+        "  \"source_crs\": {\n"
+        "    \"type\": \"GeographicCRS\",\n"
+        "    \"name\": \"NAD83(CSRS)v7\",\n"
+        "    \"datum\": {\n"
+        "      \"type\": \"GeodeticReferenceFrame\",\n"
+        "      \"name\": \"North American Datum of 1983 (CSRS) version 7\",\n"
+        "      \"ellipsoid\": {\n"
+        "        \"name\": \"GRS 1980\",\n"
+        "        \"semi_major_axis\": 6378137,\n"
+        "        \"inverse_flattening\": 298.257222101\n"
+        "      }\n"
+        "    },\n"
+        "    \"coordinate_system\": {\n"
+        "      \"subtype\": \"ellipsoidal\",\n"
+        "      \"axis\": [\n"
+        "        {\n"
+        "          \"name\": \"Geodetic latitude\",\n"
+        "          \"abbreviation\": \"Lat\",\n"
+        "          \"direction\": \"north\",\n"
+        "          \"unit\": \"degree\"\n"
+        "        },\n"
+        "        {\n"
+        "          \"name\": \"Geodetic longitude\",\n"
+        "          \"abbreviation\": \"Lon\",\n"
+        "          \"direction\": \"east\",\n"
+        "          \"unit\": \"degree\"\n"
+        "        },\n"
+        "        {\n"
+        "          \"name\": \"Ellipsoidal height\",\n"
+        "          \"abbreviation\": \"h\",\n"
+        "          \"direction\": \"up\",\n"
+        "          \"unit\": \"metre\"\n"
+        "        }\n"
+        "      ]\n"
+        "    },\n"
+        "    \"id\": {\n"
+        "      \"authority\": \"EPSG\",\n"
+        "      \"code\": 8254\n"
+        "    }\n"
+        "  },\n"
+        "  \"method\": {\n"
+        "    \"name\": \"Point motion by grid (Canada NTv2_Vel)\",\n"
+        "    \"id\": {\n"
+        "      \"authority\": \"EPSG\",\n"
+        "      \"code\": 1070\n"
+        "    }\n"
+        "  },\n"
+        "  \"parameters\": [\n"
+        "    {\n"
+        "      \"name\": \"Point motion velocity grid file\",\n"
+        "      \"value\": \"foo.tif\"\n"
+        "    }\n"
+        "  ],\n"
+        "  \"accuracy\": \"0.01\",\n"
+        "  \"scope\": \"scope\",\n"
+        "  \"area\": \"area\",\n"
+        "  \"bbox\": {\n"
+        "    \"south_latitude\": 38.21,\n"
+        "    \"west_longitude\": -141.01,\n"
+        "    \"north_latitude\": 86.46,\n"
+        "    \"east_longitude\": -40.73\n"
+        "  },\n"
+        "  \"id\": {\n"
+        "    \"authority\": \"DERIVED_FROM(EPSG)\",\n"
+        "    \"code\": 9483\n"
+        "  },\n"
+        "  \"remarks\": \"remark.\"\n"
+        "}";
+    auto obj = createFromUserInput(json, nullptr);
+    auto pmo = nn_dynamic_pointer_cast<PointMotionOperation>(obj);
+    ASSERT_TRUE(pmo != nullptr);
+    EXPECT_EQ(pmo->exportToJSON(&(JSONFormatter::create()->setSchema("foo"))),
+              json);
 }

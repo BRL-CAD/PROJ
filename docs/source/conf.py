@@ -25,13 +25,13 @@ title = "PROJ coordinate transformation software library"
 author = "PROJ contributors"
 
 # The major project version, used as the replacement for |version|
-version = "9.3"
+version = "9.4"
 
 # The full project version, used as the replacement for |release|
-release = "9.3.1"
+release = "9.4.0"
 
 # PROJ-data version
-data_version = "1.16"
+data_version = "1.17"
 
 #today_date = date.today()
 today_date = date(2023, 9, 1)  # or use a specific date

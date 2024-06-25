@@ -5166,18 +5166,6 @@ getBallparkTransformationVertToVert(const crs::CRSNNPtr &sourceCRS,
 
 // ---------------------------------------------------------------------------
 
-static std::string
-getBallparkTransformationVertToVert(const crs::CRSNNPtr &sourceCRS,
-                                    const crs::CRSNNPtr &targetCRS) {
-    auto name = buildTransfName(sourceCRS->nameStr(), targetCRS->nameStr());
-    name += " (";
-    name += BALLPARK_VERTICAL_TRANSFORMATION;
-    name += ')';
-    return name;
-}
-
-// ---------------------------------------------------------------------------
-
 void CoordinateOperationFactory::Private::createOperationsVertToVert(
     const crs::CRSNNPtr &sourceCRS, const crs::CRSNNPtr &targetCRS,
     Private::Context &context, const crs::VerticalCRS *vertSrc,

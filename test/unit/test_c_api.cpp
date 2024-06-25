@@ -232,6 +232,20 @@ TEST_F(CApi, proj_create) {
         ObjectKeeper keeper(obj);
         EXPECT_NE(obj, nullptr);
     }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create(ctxt, "EPSG:i_do_not_exist");
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(s.c_str(),
+                     "proj_create: crs not found: EPSG:i_do_not_exist");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,6 +1074,22 @@ TEST_F(CApi, proj_create_from_database) {
                         "step proj=unitconvert xy_in=rad xy_out=deg "
                         "step proj=axisswap order=2,1"));
         EXPECT_EQ(info.accuracy, 1);
+    }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create_from_database(ctxt, "EPSG", "i_do_not_exist",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(
+            s.c_str(),
+            "proj_create_from_database: crs not found: EPSG:i_do_not_exist");
     }
 }
 
@@ -4222,8 +4252,8 @@ TEST_F(CApi, proj_get_celestial_body_list_from_database) {
     { proj_celestial_body_list_destroy(nullptr); }
 
     {
-        auto list =
-            proj_get_celestial_body_list_from_database(nullptr, nullptr, nullptr);
+        auto list = proj_get_celestial_body_list_from_database(nullptr, nullptr,
+                                                               nullptr);
         ASSERT_NE(list, nullptr);
         ASSERT_NE(list[0], nullptr);
         ASSERT_NE(list[0]->auth_name, nullptr);
@@ -5544,6 +5574,7 @@ TEST_F(CApi, proj_create_derived_geographic_crs) {
         "            MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+        "            MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
         "            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
         "                LENGTHUNIT[\"metre\",1]],\n"
         "            ENSEMBLEACCURACY[2.0]],\n"

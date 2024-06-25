@@ -637,6 +637,115 @@ TEST(operation, geogCRS_to_geogCRS_context_datum_ensemble) {
 
 // ---------------------------------------------------------------------------
 
+TEST(operation, geogCRS_to_geogCRS_context_incompatible_celestial_body) {
+    auto authFactory =
+        AuthorityFactory::create(DatabaseContext::create(), std::string());
+    auto authFactoryEPSG =
+        AuthorityFactory::create(DatabaseContext::create(), "EPSG");
+    auto authFactoryIAU_2015 =
+        AuthorityFactory::create(DatabaseContext::create(), "IAU_2015");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    EXPECT_THROW(
+        CoordinateOperationFactory::create()->createOperations(
+            authFactoryEPSG->createCoordinateReferenceSystem("4326"), // WGS 84
+            authFactoryIAU_2015->createCoordinateReferenceSystem(
+                "51200"), // Ananke
+            ctxt),
+        UnsupportedOperationException);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation,
+     geogCRS_to_geogCRS_context_incompatible_celestial_body_but_same_radius) {
+    auto authFactory =
+        AuthorityFactory::create(DatabaseContext::create(), std::string());
+    auto authFactoryESRI =
+        AuthorityFactory::create(DatabaseContext::create(), "ESRI");
+    auto authFactoryIAU_2015 =
+        AuthorityFactory::create(DatabaseContext::create(), "IAU_2015");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    EXPECT_THROW(CoordinateOperationFactory::create()->createOperations(
+                     authFactoryESRI->createCoordinateReferenceSystem(
+                         "104936"), // GCS_Pan_2000
+                     authFactoryIAU_2015->createCoordinateReferenceSystem(
+                         "51200"), // Ananke
+                     ctxt),
+                 UnsupportedOperationException);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, geogCRS_to_geogCRS_compatible_unknown_celestial_body) {
+    auto dbContext = DatabaseContext::create();
+    auto authFactory = AuthorityFactory::create(dbContext, std::string());
+    auto objSrc =
+        createFromUserInput("+proj=longlat +R=10000 +type=crs", dbContext);
+    auto srcCRS = nn_dynamic_pointer_cast<CRS>(objSrc);
+    auto objDst =
+        createFromUserInput("+proj=longlat +R=10001 +type=crs", dbContext);
+    auto dstCRS = nn_dynamic_pointer_cast<CRS>(objDst);
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        NN_NO_CHECK(srcCRS), NN_NO_CHECK(dstCRS), ctxt);
+    ASSERT_EQ(list.size(), 1U);
+    EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=noop");
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, geogCRS_to_geogCRS_incompatible_unknown_celestial_body) {
+    auto dbContext = DatabaseContext::create();
+    auto authFactory = AuthorityFactory::create(dbContext, std::string());
+    auto objSrc =
+        createFromUserInput("+proj=longlat +R=10000 +type=crs", dbContext);
+    auto srcCRS = nn_dynamic_pointer_cast<CRS>(objSrc);
+    auto objDst =
+        createFromUserInput("+proj=longlat +R=99999 +type=crs", dbContext);
+    auto dstCRS = nn_dynamic_pointer_cast<CRS>(objDst);
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    EXPECT_THROW(CoordinateOperationFactory::create()->createOperations(
+                     NN_NO_CHECK(srcCRS), NN_NO_CHECK(dstCRS), ctxt),
+                 UnsupportedOperationException);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation,
+     geogCRS_to_geogCRS_compatible_celestial_body_through_semi_major_axis) {
+    auto authFactory =
+        AuthorityFactory::create(DatabaseContext::create(), std::string());
+    auto authFactoryIAU_2015 =
+        AuthorityFactory::create(DatabaseContext::create(), "IAU_2015");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+
+    auto dst_wkt = "GEOGCRS[\"unknown\",\n"
+                   "    DATUM[\"unknown\",\n"
+                   "        ELLIPSOID[\"unknown\",9999,0,\n" // Ananke is 10000
+                   "            LENGTHUNIT[\"metre\",1]]],\n"
+                   "    PRIMEM[\"Reference_Meridian\",0,\n"
+                   "        ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+                   "    CS[ellipsoidal,2],\n"
+                   "        AXIS[\"geodetic latitude (Lat)\",north,\n"
+                   "            ORDER[1],\n"
+                   "            ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+                   "        AXIS[\"geodetic longitude (Lon)\",east,\n"
+                   "            ORDER[2],\n"
+                   "            ANGLEUNIT[\"degree\",0.0174532925199433]]]";
+    auto dstObj = WKTParser().createFromWKT(dst_wkt);
+    auto dstCRS = nn_dynamic_pointer_cast<CRS>(dstObj);
+
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        authFactoryIAU_2015->createCoordinateReferenceSystem("51200"), // Ananke
+        NN_NO_CHECK(dstCRS), ctxt);
+    ASSERT_EQ(list.size(), 1U);
+    EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=noop");
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(operation, geogCRS_to_derived_geogCRS_3D) {
     auto authFactory =
         AuthorityFactory::create(DatabaseContext::create(), "EPSG");
@@ -852,9 +961,21 @@ TEST(operation, geog3DCRS_to_geog2DCRS_plus_vertCRS_context) {
             authFactory->createCoordinateReferenceSystem("4937"),
             // ETRS89 + Baltic 1957 height
             authFactory->createCoordinateReferenceSystem("8360"), ctxt);
-        ASSERT_GE(list.size(), 1U);
+        ASSERT_GE(list.size(), 2U);
         EXPECT_EQ(
             list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+            "+proj=pipeline "
+            "+step +proj=axisswap +order=2,1 "
+            "+step +proj=unitconvert +xy_in=deg +xy_out=rad "
+            "+step +inv +proj=vgridshift "
+            "+grids=cz_cuzk_CR-2005.tif +multiplier=1 "
+            "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
+            "+step +proj=axisswap +order=2,1");
+        EXPECT_EQ(list[0]->inverse()->nameStr(),
+                  "Inverse of ETRS89 to Baltic 1957 height (2)");
+
+        EXPECT_EQ(
+            list[1]->exportToPROJString(PROJStringFormatter::create().get()),
             "+proj=pipeline "
             "+step +proj=axisswap +order=2,1 "
             "+step +proj=unitconvert +xy_in=deg +xy_out=rad "
@@ -862,8 +983,7 @@ TEST(operation, geog3DCRS_to_geog2DCRS_plus_vertCRS_context) {
             "+grids=sk_gku_Slovakia_ETRS89h_to_Baltic1957.tif +multiplier=1 "
             "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
             "+step +proj=axisswap +order=2,1");
-
-        EXPECT_EQ(list[0]->inverse()->nameStr(),
+        EXPECT_EQ(list[1]->inverse()->nameStr(),
                   "Inverse of 'ETRS89 to ETRS89 + Baltic 1957 height (1)'");
     }
 }
@@ -1959,8 +2079,8 @@ TEST(operation, geogCRS_to_geogCRS_with_intermediate_no_ids) {
             "Conversion from ITRF2014 (geog3D) to ITRF2014 (geocentric) + "
             "ITRF2014 to ETRF2014 (1) + "
             "Inverse of NKG_ETRF14 to ETRF2014 + "
-            "NKG_ETRF14 to ETRF96@2000.0 + "
-            "ETRF96@2000.0 to ETRF96@1997.56 + "
+            "NKG_ETRF14 to ETRF96@2000.0 (Estonia) + "
+            "ETRF96@2000.0 to ETRF96@1997.56 using nkgrf17vel + "
             "Conversion from ETRS89 (geocentric) to ETRS89 (geog2D) + "
             "Inverse of EST97 to ETRS89 (1) + "
             "Null geographic offset from EST97 (geog2D) to EST97 (geog3D) + "
@@ -5867,8 +5987,15 @@ TEST(
     {
         auto list = CoordinateOperationFactory::create()->createOperations(
             NN_NO_CHECK(src), NN_NO_CHECK(dst), ctxt);
-        ASSERT_GE(list.size(), 1U);
+        ASSERT_GE(list.size(), 2U);
         EXPECT_EQ(list[0]->nameStr(),
+                  "Inverse of NAD83(CSRS)v6 to CGVD28 height (1) + "
+                  "NAD83(CSRS)v6 to CGVD2013(CGG2013) height (1) "
+                  "using Null geographic offset "
+                  "from NAD83(CSRS)v6 (geog3D) to NAD83(CSRS)v6 (geog2D) + "
+                  "Inverse of NAD83 to NAD83(CSRS)v6 (10) + "
+                  "NAD83 to NAD83(CSRS) (4)");
+        EXPECT_EQ(list[1]->nameStr(),
                   "Inverse of NAD83(CSRS)v6 to CGVD28 height (1) + "
                   "NAD83(CSRS)v6 to CGVD2013(CGG2013) height (1) "
                   "using Ballpark geographic offset "

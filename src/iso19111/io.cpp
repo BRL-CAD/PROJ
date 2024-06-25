@@ -2083,15 +2083,17 @@ EllipsoidNNPtr WKTParser::Private::buildEllipsoid(const WKTNodeNNPtr &node) {
         Scale invFlattening(invFlatteningChild->GP()->value() == "\"inf\""
                                 ? 0
                                 : asDouble(invFlatteningChild));
-        const auto celestialBody(
-            Ellipsoid::guessBodyName(dbContext_, semiMajorAxis.getSIValue()));
+        const auto ellpsProperties = buildProperties(node);
+        std::string ellpsName;
+        ellpsProperties.getStringValue(IdentifiedObject::NAME_KEY, ellpsName);
+        const auto celestialBody(Ellipsoid::guessBodyName(
+            dbContext_, semiMajorAxis.getSIValue(), ellpsName));
         if (invFlattening.getSIValue() == 0) {
-            return Ellipsoid::createSphere(buildProperties(node), semiMajorAxis,
+            return Ellipsoid::createSphere(ellpsProperties, semiMajorAxis,
                                            celestialBody);
         } else {
             return Ellipsoid::createFlattenedSphere(
-                buildProperties(node), semiMajorAxis, invFlattening,
-                celestialBody);
+                ellpsProperties, semiMajorAxis, invFlattening, celestialBody);
         }
     } catch (const std::exception &e) {
         throw buildRethrow(__FUNCTION__, e);
@@ -4460,10 +4462,80 @@ WKTParser::Private::buildProjectedCRS(const WKTNodeNNPtr &node) {
         !ci_equal(nodeValue, WKTConstants::BASEPROJCRS)) {
         ThrowMissing(WKTConstants::CS_);
     }
-    auto cs = buildCS(csNode, node, UnitOfMeasure::NONE);
-    auto cartesianCS = nn_dynamic_pointer_cast<CartesianCS>(cs);
 
     const std::string projCRSName = stripQuotes(nodeP->children()[0]);
+
+    auto cs = [this, &projCRSName, &nodeP, &csNode, &node, &nodeValue,
+               &conversionNode]() -> CoordinateSystemNNPtr {
+        if (isNull(csNode) && ci_equal(nodeValue, WKTConstants::BASEPROJCRS) &&
+            !isNull(conversionNode)) {
+            // A BASEPROJCRS (as of WKT2 18-010r11) normally lacks an explicit
+            // CS[] which cause issues to properly instanciate it. So we first
+            // start by trying to identify the BASEPROJCRS by its id or name.
+            // And fallback to exploring the conversion parameters to infer the
+            // CS AXIS unit from the linear parameter unit... Not fully bullet
+            // proof.
+            if (dbContext_) {
+                // Get official name from database if ID is present
+                auto &idNode = nodeP->lookForChild(WKTConstants::ID);
+                if (!isNull(idNode)) {
+                    try {
+                        auto id = buildId(idNode, false, false);
+                        auto authFactory = AuthorityFactory::create(
+                            NN_NO_CHECK(dbContext_), *id->codeSpace());
+                        auto projCRS =
+                            authFactory->createProjectedCRS(id->code());
+                        return projCRS->coordinateSystem();
+                    } catch (const std::exception &) {
+                    }
+                }
+
+                auto authFactory = AuthorityFactory::create(
+                    NN_NO_CHECK(dbContext_), std::string());
+                auto res = authFactory->createObjectsFromName(
+                    projCRSName, {AuthorityFactory::ObjectType::PROJECTED_CRS},
+                    false, 2);
+                if (res.size() == 1) {
+                    auto projCRS =
+                        dynamic_cast<const ProjectedCRS *>(res.front().get());
+                    if (projCRS) {
+                        return projCRS->coordinateSystem();
+                    }
+                }
+            }
+
+            auto conv = buildConversion(conversionNode, UnitOfMeasure::METRE,
+                                        UnitOfMeasure::DEGREE);
+            UnitOfMeasure linearUOM = UnitOfMeasure::NONE;
+            for (const auto &genOpParamvalue : conv->parameterValues()) {
+                auto opParamvalue =
+                    dynamic_cast<const operation::OperationParameterValue *>(
+                        genOpParamvalue.get());
+                if (opParamvalue) {
+                    const auto &parameterValue = opParamvalue->parameterValue();
+                    if (parameterValue->type() ==
+                        operation::ParameterValue::Type::MEASURE) {
+                        const auto &measure = parameterValue->value();
+                        const auto &unit = measure.unit();
+                        if (unit.type() == UnitOfMeasure::Type::LINEAR) {
+                            if (linearUOM == UnitOfMeasure::NONE) {
+                                linearUOM = unit;
+                            } else if (linearUOM != unit) {
+                                linearUOM = UnitOfMeasure::NONE;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (linearUOM != UnitOfMeasure::NONE) {
+                return CartesianCS::createEastingNorthing(linearUOM);
+            }
+        }
+        return buildCS(csNode, node, UnitOfMeasure::NONE);
+    }();
+    auto cartesianCS = nn_dynamic_pointer_cast<CartesianCS>(cs);
+
     if (esriStyle_ && dbContext_) {
         if (cartesianCS) {
             std::string outTableName;
@@ -7052,15 +7124,18 @@ PrimeMeridianNNPtr JSONParser::buildPrimeMeridian(const json &j) {
 EllipsoidNNPtr JSONParser::buildEllipsoid(const json &j) {
     if (j.contains("semi_major_axis")) {
         auto semiMajorAxis = getLength(j, "semi_major_axis");
-        const auto celestialBody(
-            Ellipsoid::guessBodyName(dbContext_, semiMajorAxis.getSIValue()));
+        const auto ellpsProperties = buildProperties(j);
+        std::string ellpsName;
+        ellpsProperties.getStringValue(IdentifiedObject::NAME_KEY, ellpsName);
+        const auto celestialBody(Ellipsoid::guessBodyName(
+            dbContext_, semiMajorAxis.getSIValue(), ellpsName));
         if (j.contains("semi_minor_axis")) {
-            return Ellipsoid::createTwoAxis(buildProperties(j), semiMajorAxis,
+            return Ellipsoid::createTwoAxis(ellpsProperties, semiMajorAxis,
                                             getLength(j, "semi_minor_axis"),
                                             celestialBody);
         } else if (j.contains("inverse_flattening")) {
             return Ellipsoid::createFlattenedSphere(
-                buildProperties(j), semiMajorAxis,
+                ellpsProperties, semiMajorAxis,
                 Scale(getNumber(j, "inverse_flattening")), celestialBody);
         } else {
             throw ParsingException(
@@ -10798,7 +10873,7 @@ PrimeMeridianNNPtr PROJStringParser::Private::buildPrimeMeridian(Step &step) {
 std::string PROJStringParser::Private::guessBodyName(double a) {
 
     auto ret = Ellipsoid::guessBodyName(dbContext_, a);
-    if (ret == "Non-Earth body" && dbContext_ == nullptr && ctx_ != nullptr) {
+    if (ret == NON_EARTH_BODY && dbContext_ == nullptr && ctx_ != nullptr) {
         dbContext_ =
             ctx_->get_cpp_context()->getDatabaseContext().as_nullable();
         if (dbContext_) {

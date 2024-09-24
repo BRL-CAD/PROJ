@@ -214,6 +214,9 @@
 #define EPSG_NAME_METHOD_ORTHOGRAPHIC "Orthographic"
 #define EPSG_CODE_METHOD_ORTHOGRAPHIC 9840
 
+#define EPSG_NAME_METHOD_LOCAL_ORTHOGRAPHIC "Local Orthographic"
+#define EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC 1130
+
 #define PROJ_WKT2_NAME_ORTHOGRAPHIC_SPHERICAL "Orthographic (Spherical)"
 
 #define PROJ_WKT2_NAME_METHOD_PATTERSON "Patterson"
@@ -311,16 +314,28 @@
     "Longitude of projection centre"
 #define EPSG_CODE_PARAMETER_LONGITUDE_PROJECTION_CENTRE 8812
 
+// Before EPSG 11.015
 #define EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE "Azimuth of initial line"
 #define EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE 8813
+
+// Since EPSG 11.015
+#define EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE                          \
+    "Azimuth at projection centre"
+#define EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE 8813
 
 #define EPSG_NAME_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID                       \
     "Angle from Rectified to Skew Grid"
 #define EPSG_CODE_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID 8814
 
+// Before EPSG 11.015
 #define EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE                          \
     "Scale factor on initial line"
 #define EPSG_CODE_PARAMETER_SCALE_FACTOR_INITIAL_LINE 8815
+
+// Since EPSG 11.015
+#define EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE                     \
+    "Scale factor at projection centre"
+#define EPSG_CODE_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE 8815
 
 #define EPSG_NAME_PARAMETER_EASTING_PROJECTION_CENTRE                          \
     "Easting at projection centre"
@@ -600,9 +615,22 @@
     "Point motion velocity grid file"
 
 /* ------------------------------------------------------------------------ */
+
+#define EPSG_NAME_METHOD_NEW_ZEALAND_DEFORMATION_MODEL                         \
+    "New Zealand Deformation Model"
+#define EPSG_CODE_METHOD_NEW_ZEALAND_DEFORMATION_MODEL 1079
+
+/* ------------------------------------------------------------------------ */
+
+/* Has been renamed to
+ * EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL */
 #define EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NRCAN            \
     "Geographic3D Offset by velocity grid (NRCan byn)"
 #define EPSG_CODE_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NRCAN 1114
+
+#define EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL         \
+    "Geographic3D Offset by velocity grid (NTv2_Vel)"
+#define EPSG_CODE_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL 1114
 
 /* ------------------------------------------------------------------------ */
 
@@ -642,6 +670,10 @@
 #define EPSG_CODE_METHOD_VERTICALGRID_GTX 1084
 #define EPSG_NAME_METHOD_VERTICALGRID_GTX                                      \
     "Vertical Offset by Grid Interpolation (gtx)"
+
+#define EPSG_CODE_METHOD_VERTICALGRID_GTG 1129
+#define EPSG_NAME_METHOD_VERTICALGRID_GTG                                      \
+    "Vertical Offset by Grid Interpolation (gtg)"
 
 #define EPSG_CODE_METHOD_VERTICALGRID_PL_TXT 1101
 #define EPSG_NAME_METHOD_VERTICALGRID_PL_TXT                                   \
@@ -803,6 +835,17 @@
 
 #define EPSG_CODE_METHOD_HEIGHT_DEPTH_REVERSAL 1068
 #define EPSG_NAME_METHOD_HEIGHT_DEPTH_REVERSAL "Height Depth Reversal"
+
+/* ------------------------------------------------------------------------ */
+
+#define EPSG_CODE_METHOD_CARTESIAN_GRID_OFFSETS 9656
+#define EPSG_NAME_METHOD_CARTESIAN_GRID_OFFSETS "Cartesian Grid Offsets"
+
+#define EPSG_CODE_PARAMETER_EASTING_OFFSET 8728
+#define EPSG_NAME_PARAMETER_EASTING_OFFSET "Easting offset"
+
+#define EPSG_CODE_PARAMETER_NORTHING_OFFSET 8729
+#define EPSG_NAME_PARAMETER_NORTHING_OFFSET "Northing offset"
 
 /* ------------------------------------------------------------------------ */
 

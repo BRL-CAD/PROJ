@@ -174,8 +174,8 @@ extern "C" {
 
 /* The version numbers should be updated with every release! **/
 #define PROJ_VERSION_MAJOR 9
-#define PROJ_VERSION_MINOR 4
-#define PROJ_VERSION_PATCH 1
+#define PROJ_VERSION_MINOR 5
+#define PROJ_VERSION_PATCH 0
 
 /* Note: the following 3 defines have been introduced in PROJ 8.0.1 */
 /* Macro to compute a PROJ version number from its components */
@@ -563,6 +563,10 @@ const char PROJ_DLL *proj_context_get_url_endpoint(PJ_CONTEXT *ctx);
 const char PROJ_DLL *proj_context_get_user_writable_directory(PJ_CONTEXT *ctx,
                                                               int create);
 
+void PROJ_DLL proj_context_set_user_writable_directory(PJ_CONTEXT *ctx,
+                                                       const char *path,
+                                                       int create);
+
 void PROJ_DLL proj_grid_cache_set_enable(PJ_CONTEXT *ctx, int enabled);
 
 void PROJ_DLL proj_grid_cache_set_filename(PJ_CONTEXT *ctx,
@@ -708,6 +712,9 @@ PJ_COORD PROJ_DLL proj_geod(const PJ *P, PJ_COORD a, PJ_COORD b);
      5) /* point to transform falls in a grid cell that evaluates to nodata */
 #define PROJ_ERR_COORD_TRANSFM_NO_CONVERGENCE                                  \
     (PROJ_ERR_COORD_TRANSFM + 6) /* iterative convergence method fail */
+#define PROJ_ERR_COORD_TRANSFM_MISSING_TIME                                    \
+    (PROJ_ERR_COORD_TRANSFM + 7) /* operation requires time, but not provided  \
+                                  */
 
 /** Other type of errors */
 #define PROJ_ERR_OTHER 4096
@@ -1457,6 +1464,9 @@ int PROJ_DLL proj_coordoperation_is_instantiable(PJ_CONTEXT *ctx,
 int PROJ_DLL proj_coordoperation_has_ballpark_transformation(
     PJ_CONTEXT *ctx, const PJ *coordoperation);
 
+int PROJ_DLL proj_coordoperation_requires_per_coordinate_input_time(
+    PJ_CONTEXT *ctx, const PJ *coordoperation);
+
 int PROJ_DLL proj_coordoperation_get_param_count(PJ_CONTEXT *ctx,
                                                  const PJ *coordoperation);
 
@@ -1643,12 +1653,13 @@ PJ PROJ_DLL *proj_create_geographic_crs(
     PJ_CONTEXT *ctx, const char *crs_name, const char *datum_name,
     const char *ellps_name, double semi_major_metre, double inv_flattening,
     const char *prime_meridian_name, double prime_meridian_offset,
-    const char *pm_angular_units, double pm_units_conv, PJ *ellipsoidal_cs);
+    const char *pm_angular_units, double pm_units_conv,
+    const PJ *ellipsoidal_cs);
 
-PJ PROJ_DLL *proj_create_geographic_crs_from_datum(PJ_CONTEXT *ctx,
-                                                   const char *crs_name,
-                                                   PJ *datum_or_datum_ensemble,
-                                                   PJ *ellipsoidal_cs);
+PJ PROJ_DLL *
+proj_create_geographic_crs_from_datum(PJ_CONTEXT *ctx, const char *crs_name,
+                                      const PJ *datum_or_datum_ensemble,
+                                      const PJ *ellipsoidal_cs);
 
 PJ PROJ_DLL *proj_create_geocentric_crs(
     PJ_CONTEXT *ctx, const char *crs_name, const char *datum_name,
@@ -1721,7 +1732,7 @@ PJ PROJ_DLL *proj_create_vertical_crs_ex(
     const char *const *options);
 
 PJ PROJ_DLL *proj_create_compound_crs(PJ_CONTEXT *ctx, const char *crs_name,
-                                      PJ *horiz_crs, PJ *vert_crs);
+                                      const PJ *horiz_crs, const PJ *vert_crs);
 
 PJ PROJ_DLL *proj_create_conversion(PJ_CONTEXT *ctx, const char *name,
                                     const char *auth_name, const char *code,
@@ -1732,7 +1743,7 @@ PJ PROJ_DLL *proj_create_conversion(PJ_CONTEXT *ctx, const char *name,
 
 PJ PROJ_DLL *proj_create_transformation(
     PJ_CONTEXT *ctx, const char *name, const char *auth_name, const char *code,
-    PJ *source_crs, PJ *target_crs, PJ *interpolation_crs,
+    const PJ *source_crs, const PJ *target_crs, const PJ *interpolation_crs,
     const char *method_name, const char *method_auth_name,
     const char *method_code, int param_count,
     const PJ_PARAM_DESCRIPTION *params, double accuracy);
@@ -2083,6 +2094,12 @@ PJ PROJ_DLL *proj_create_conversion_orthographic(
     double false_easting, double false_northing, const char *ang_unit_name,
     double ang_unit_conv_factor, const char *linear_unit_name,
     double linear_unit_conv_factor);
+
+PJ PROJ_DLL *proj_create_conversion_local_orthographic(
+    PJ_CONTEXT *ctx, double center_lat, double center_long, double azimuth,
+    double scale, double false_easting, double false_northing,
+    const char *ang_unit_name, double ang_unit_conv_factor,
+    const char *linear_unit_name, double linear_unit_conv_factor);
 
 PJ PROJ_DLL *proj_create_conversion_american_polyconic(
     PJ_CONTEXT *ctx, double center_lat, double center_long,

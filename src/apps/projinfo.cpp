@@ -30,6 +30,7 @@
 
 #define FROM_PROJ_CPP
 
+#include <cmath>
 #include <cstdlib>
 #include <fstream> // std::ifstream
 #include <iostream>
@@ -122,8 +123,9 @@ struct OutputOptions {
         << "                {object_definition} | {object_reference} |"
         << std::endl
         << "                (-s {srs_def} [--s_epoch {epoch}] "
-           "-t {srs_def} [--t_epoch {epoch}])"
-        << std::endl;
+           "-t {srs_def} [--t_epoch {epoch}]) |"
+        << std::endl
+        << "                ({srs_def} {srs_def})" << std::endl;
     std::cerr << std::endl;
     std::cerr << "-o: formats is a comma separated combination of: "
                  "all,default,PROJ,WKT_ALL,WKT2:2015,WKT2:2019,WKT1:GDAL,"
@@ -186,9 +188,21 @@ static ExtentPtr makeBboxFilter(DatabaseContextPtr dbContext,
             std::vector<double> bboxValues = {
                 c_locale_stod(bbox[0]), c_locale_stod(bbox[1]),
                 c_locale_stod(bbox[2]), c_locale_stod(bbox[3])};
-            bboxFilter = Extent::createFromBBOX(bboxValues[0], bboxValues[1],
-                                                bboxValues[2], bboxValues[3])
-                             .as_nullable();
+            const double west = bboxValues[0];
+            const double south = bboxValues[1];
+            const double east = bboxValues[2];
+            const double north = bboxValues[3];
+            constexpr double SOME_MARGIN = 10;
+            if (south < -90 - SOME_MARGIN && std::fabs(west) <= 90 &&
+                std::fabs(east) <= 90)
+                std::cerr << "Warning: suspicious south latitude: " << south
+                          << std::endl;
+            if (north > 90 + SOME_MARGIN && std::fabs(west) <= 90 &&
+                std::fabs(east) <= 90)
+                std::cerr << "Warning: suspicious north latitude: " << north
+                          << std::endl;
+            bboxFilter =
+                Extent::createFromBBOX(west, south, east, north).as_nullable();
         } catch (const std::exception &e) {
             std::cerr << "Invalid value for option --bbox: " << bboxStr << ", "
                       << e.what() << std::endl;
@@ -319,10 +333,16 @@ static BaseObjectNNPtr buildObject(
                 wktParser.attachDatabaseContext(dbContext);
                 obj = wktParser.createFromWKT(l_user_string).as_nullable();
                 if (!quiet) {
-                    auto warnings = wktParser.warningList();
+                    const auto warnings = wktParser.warningList();
                     if (!warnings.empty()) {
                         for (const auto &str : warnings) {
                             std::cerr << "Warning: " << str << std::endl;
+                        }
+                    }
+                    const auto grammarErrorList = wktParser.grammarErrorList();
+                    if (!grammarErrorList.empty()) {
+                        for (const auto &str : grammarErrorList) {
+                            std::cerr << "Grammar error: " << str << std::endl;
                         }
                     }
                 }
@@ -1036,8 +1056,7 @@ int main(int argc, char **argv) {
         usage();
     }
 
-    std::string user_string;
-    bool user_string_specified = false;
+    std::vector<std::string> positional_args;
     std::string sourceCRSStr;
     std::string sourceEpoch;
     std::string targetCRSStr;
@@ -1399,13 +1418,7 @@ int main(int argc, char **argv) {
             std::cerr << "Unrecognized option: " << arg << std::endl;
             usage();
         } else {
-            if (!user_string_specified) {
-                user_string_specified = true;
-                user_string = arg;
-            } else {
-                std::cerr << "Too many parameters: " << arg << std::endl;
-                usage();
-            }
+            positional_args.push_back(arg);
         }
     }
 
@@ -1414,7 +1427,8 @@ int main(int argc, char **argv) {
         std::exit(1);
     }
 
-    if (dumpDbStructure && user_string_specified && !outputSwitchSpecified) {
+    if (dumpDbStructure && positional_args.size() == 1 &&
+        !outputSwitchSpecified) {
         // Implicit settings in --output-db-structure mode + object
         outputSwitchSpecified = true;
         outputOpt.SQL = true;
@@ -1563,6 +1577,19 @@ int main(int argc, char **argv) {
         }
     }
 
+    std::string user_string;
+    if (sourceCRSStr.empty() && targetCRSStr.empty() &&
+        positional_args.size() == 2) {
+        sourceCRSStr = positional_args[0];
+        targetCRSStr = positional_args[1];
+        positional_args.resize(0);
+    } else if (positional_args.size() == 1) {
+        user_string = positional_args.front();
+    } else if (positional_args.size() > 1) {
+        std::cerr << "Too many parameters: " << positional_args[1] << std::endl;
+        usage();
+    }
+
     if (!sourceCRSStr.empty() && targetCRSStr.empty()) {
         std::cerr << "Source CRS specified, but missing target CRS"
                   << std::endl;
@@ -1572,11 +1599,11 @@ int main(int argc, char **argv) {
                   << std::endl;
         usage();
     } else if (!sourceCRSStr.empty() && !targetCRSStr.empty()) {
-        if (user_string_specified) {
+        if (!positional_args.empty()) {
             std::cerr << "Unused extra value" << std::endl;
             usage();
         }
-    } else if (!user_string_specified) {
+    } else if (positional_args.empty()) {
         if (dumpDbStructure || listCRSSpecified) {
             std::exit(0);
         }

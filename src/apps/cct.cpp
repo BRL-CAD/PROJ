@@ -79,6 +79,7 @@ Thomas Knudsen, thokn@sdfe.dk, 2016-05-25/2017-10-26
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <fstream> // std::ifstream
 #include <iostream>
 
@@ -442,7 +443,8 @@ int main(int argc, char **argv) {
 
     /* Loop over all records of all input files */
     int previous_index = -1;
-    while (opt_input_loop(o, optargs_file_format_text)) {
+    bool gotError = false;
+    while (opt_input_loop(o, optargs_file_format_text, &gotError)) {
         int err;
         char *bufptr = fgets(buf, BUFFER_SIZE - 1, o->input);
         if (opt_eof(o)) {
@@ -547,7 +549,7 @@ int main(int argc, char **argv) {
         fclose(fout);
     free(o);
     free(buf);
-    return 0;
+    return gotError ? 1 : 0;
 }
 
 /* return a pointer to the n'th column of buf */

@@ -184,12 +184,14 @@ Transformation::demoteTo2D(const std::string &,
  * can be used as the value of the WKT1 TOWGS84 parameter or
  * PROJ +towgs84 parameter.
  *
+ * @param canThrowException if true, an exception is thrown if the method fails,
+ * otherwise an empty vector is returned in case of failure.
  * @return a vector of 7 values if valid, otherwise a io::FormattingException
  * is thrown.
  * @throws io::FormattingException
  */
-std::vector<double>
-Transformation::getTOWGS84Parameters() const // throw(io::FormattingException)
+std::vector<double> Transformation::getTOWGS84Parameters(
+    bool canThrowException) const // throw(io::FormattingException)
 {
     // GDAL WKT1 assumes EPSG:9606 / Position Vector convention
 
@@ -297,6 +299,8 @@ Transformation::getTOWGS84Parameters() const // throw(io::FormattingException)
              (foundRotX && foundRotY && foundRotZ && foundScale))) {
             return params;
         } else {
+            if (!canThrowException)
+                return {};
             throw io::FormattingException(
                 "Missing required parameter values in transformation");
         }
@@ -321,6 +325,8 @@ Transformation::getTOWGS84Parameters() const // throw(io::FormattingException)
     }
 #endif
 
+    if (!canThrowException)
+        return {};
     throw io::FormattingException(
         "Transformation cannot be formatted as WKT1 TOWGS84 parameters");
 }
@@ -1273,6 +1279,38 @@ TransformationNNPtr Transformation::createGeographic2DWithHeightOffsets(
 
 // ---------------------------------------------------------------------------
 
+/** \brief Instantiate a transformation with method Cartesian grid offsets
+ *
+ * This method is defined as
+ * <a href="https://epsg.org/coord-operation-method_9656/index.html">
+ * EPSG:9656</a>.
+ *
+ * @param properties See \ref general_properties of the Transformation.
+ * At minimum the name should be defined.
+ * @param sourceCRSIn Source CRS.
+ * @param targetCRSIn Target CRS.
+ * @param eastingOffset Easting offset to add.
+ * @param northingOffset Northing offset to add.
+ * @param accuracies Vector of positional accuracy (might be empty).
+ * @return new Transformation.
+ * @since PROJ 9.5.0
+ */
+TransformationNNPtr Transformation::createCartesianGridOffsets(
+    const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
+    const crs::CRSNNPtr &targetCRSIn, const common::Length &eastingOffset,
+    const common::Length &northingOffset,
+    const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies) {
+    return create(
+        properties, sourceCRSIn, targetCRSIn, nullptr,
+        createMethodMapNameEPSGCode(EPSG_CODE_METHOD_CARTESIAN_GRID_OFFSETS),
+        VectorOfParameters{
+            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_EASTING_OFFSET),
+            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_NORTHING_OFFSET)},
+        VectorOfValues{eastingOffset, northingOffset}, accuracies);
+}
+
+// ---------------------------------------------------------------------------
+
 /** \brief Instantiate a transformation with method Vertical Offset.
  *
  * This method is defined as
@@ -1489,6 +1527,8 @@ Transformation::Private::registerInv(const Transformation *thisIn,
     invTransform->d->forwardOperation_ = thisIn->shallowClone().as_nullable();
     invTransform->setHasBallparkTransformation(
         thisIn->hasBallparkTransformation());
+    invTransform->setRequiresPerCoordinateInputTime(
+        thisIn->requiresPerCoordinateInputTime());
     return invTransform;
 }
 //! @endcond
@@ -1648,6 +1688,23 @@ TransformationNNPtr Transformation::inverseAsTransformation() const {
                       createPropertiesForInverse(this, false, false),
                       l_targetCRS, l_sourceCRS, newOffsetLat, newOffsetLong,
                       newOffsetHeight, coordinateOperationAccuracies()));
+    }
+
+    if (methodEPSGCode == EPSG_CODE_METHOD_CARTESIAN_GRID_OFFSETS) {
+        const auto &eastingOffset =
+            parameterValueMeasure(EPSG_CODE_PARAMETER_EASTING_OFFSET);
+        const common::Length newEastingOffset(negate(eastingOffset.value()),
+                                              eastingOffset.unit());
+
+        const auto &northingOffset =
+            parameterValueMeasure(EPSG_CODE_PARAMETER_NORTHING_OFFSET);
+        const common::Length newNorthingOffset(negate(northingOffset.value()),
+                                               northingOffset.unit());
+        return Private::registerInv(
+            this, createCartesianGridOffsets(
+                      createPropertiesForInverse(this, false, false),
+                      l_targetCRS, l_sourceCRS, newEastingOffset,
+                      newNorthingOffset, coordinateOperationAccuracies()));
     }
 
     if (methodEPSGCode == EPSG_CODE_METHOD_VERTICAL_OFFSET) {

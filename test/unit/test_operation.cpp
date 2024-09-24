@@ -555,7 +555,7 @@ TEST(operation, transformation_createGeocentricTranslations) {
         2.0, 3.0, std::vector<PositionalAccuracyNNPtr>());
     EXPECT_TRUE(transf->validateParameters().empty());
 
-    auto params = transf->getTOWGS84Parameters();
+    auto params = transf->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0};
     EXPECT_EQ(params, expected);
 
@@ -570,7 +570,7 @@ TEST(operation, transformation_createGeocentricTranslations) {
               inv_transf_as_transf->sourceCRS()->nameStr());
     auto expected_inv =
         std::vector<double>{-1.0, -2.0, -3.0, 0.0, 0.0, 0.0, 0.0};
-    EXPECT_EQ(inv_transf_as_transf->getTOWGS84Parameters(), expected_inv);
+    EXPECT_EQ(inv_transf_as_transf->getTOWGS84Parameters(true), expected_inv);
 
     EXPECT_EQ(transf->exportToPROJString(PROJStringFormatter::create().get()),
               "+proj=pipeline +step +proj=axisswap +order=2,1 +step "
@@ -677,7 +677,7 @@ TEST(operation, transformation_createPositionVector) {
     ASSERT_EQ(transf->coordinateOperationAccuracies().size(), 1U);
 
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
-    EXPECT_EQ(transf->getTOWGS84Parameters(), expected);
+    EXPECT_EQ(transf->getTOWGS84Parameters(true), expected);
 
     EXPECT_EQ(transf->exportToPROJString(PROJStringFormatter::create().get()),
               "+proj=pipeline +step +proj=axisswap +order=2,1 +step "
@@ -744,7 +744,7 @@ TEST(operation, transformation_createCoordinateFrameRotation) {
         std::vector<PositionalAccuracyNNPtr>());
     EXPECT_TRUE(transf->validateParameters().empty());
 
-    auto params = transf->getTOWGS84Parameters();
+    auto params = transf->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
     EXPECT_EQ(params, expected);
 
@@ -813,12 +813,16 @@ TEST(operation, transformation_createTimeDependentPositionVector) {
         std::vector<PositionalAccuracyNNPtr>());
     EXPECT_TRUE(transf->validateParameters().empty());
 
+    EXPECT_TRUE(transf->requiresPerCoordinateInputTime());
+
     auto inv_transf = transf->inverse();
 
     EXPECT_EQ(transf->sourceCRS()->nameStr(),
               inv_transf->targetCRS()->nameStr());
     EXPECT_EQ(transf->targetCRS()->nameStr(),
               inv_transf->sourceCRS()->nameStr());
+
+    EXPECT_TRUE(inv_transf->requiresPerCoordinateInputTime());
 
     auto projString =
         inv_transf->exportToPROJString(PROJStringFormatter::create().get());
@@ -1241,7 +1245,7 @@ TEST(operation, utm_export) {
               "    PARAMETER[\"False northing\",10000000,\n"
               "        LENGTHUNIT[\"metre\",1],\n"
               "        ID[\"EPSG\",8807]],\n"
-              "    ID[\"EPSG\",17001]]");
+              "    ID[\"EPSG\",16101]]");
 
     EXPECT_EQ(
         conv->exportToWKT(
@@ -2442,13 +2446,13 @@ TEST(operation, hotine_oblique_mercator_variant_A_export) {
               "    PARAMETER[\"Longitude of projection centre\",2,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8812]],\n"
-              "    PARAMETER[\"Azimuth of initial line\",3,\n"
+              "    PARAMETER[\"Azimuth at projection centre\",3,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8813]],\n"
               "    PARAMETER[\"Angle from Rectified to Skew Grid\",4,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8814]],\n"
-              "    PARAMETER[\"Scale factor on initial line\",5,\n"
+              "    PARAMETER[\"Scale factor at projection centre\",5,\n"
               "        SCALEUNIT[\"unity\",1],\n"
               "        ID[\"EPSG\",8815]],\n"
               "    PARAMETER[\"False easting\",6,\n"
@@ -2504,13 +2508,13 @@ TEST(operation, hotine_oblique_mercator_variant_B_export) {
               "    PARAMETER[\"Longitude of projection centre\",2,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8812]],\n"
-              "    PARAMETER[\"Azimuth of initial line\",3,\n"
+              "    PARAMETER[\"Azimuth at projection centre\",3,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8813]],\n"
               "    PARAMETER[\"Angle from Rectified to Skew Grid\",4,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8814]],\n"
-              "    PARAMETER[\"Scale factor on initial line\",5,\n"
+              "    PARAMETER[\"Scale factor at projection centre\",5,\n"
               "        SCALEUNIT[\"unity\",1],\n"
               "        ID[\"EPSG\",8815]],\n"
               "    PARAMETER[\"Easting at projection centre\",6,\n"
@@ -2573,7 +2577,7 @@ TEST(operation, hotine_oblique_mercator_two_point_natural_origin_export) {
         "        ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
         "    PARAMETER[\"Longitude of 2nd point\",5,\n"
         "        ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
-        "    PARAMETER[\"Scale factor on initial line\",6,\n"
+        "    PARAMETER[\"Scale factor at projection centre\",6,\n"
         "        SCALEUNIT[\"unity\",1],\n"
         "        ID[\"EPSG\",8815]],\n"
         "    PARAMETER[\"Easting at projection centre\",7,\n"
@@ -2620,10 +2624,10 @@ TEST(operation, laborde_oblique_mercator_export) {
               "    PARAMETER[\"Longitude of projection centre\",2,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8812]],\n"
-              "    PARAMETER[\"Azimuth of initial line\",3,\n"
+              "    PARAMETER[\"Azimuth at projection centre\",3,\n"
               "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
               "        ID[\"EPSG\",8813]],\n"
-              "    PARAMETER[\"Scale factor on initial line\",4,\n"
+              "    PARAMETER[\"Scale factor at projection centre\",4,\n"
               "        SCALEUNIT[\"unity\",1],\n"
               "        ID[\"EPSG\",8815]],\n"
               "    PARAMETER[\"False easting\",5,\n"
@@ -3603,6 +3607,52 @@ TEST(operation, orthographic_export) {
 
 // ---------------------------------------------------------------------------
 
+TEST(operation, local_orthographic_export) {
+    auto conv = Conversion::createLocalOrthographic(
+        PropertyMap(), Angle(1), Angle(2), Angle(3), Scale(1.25), Length(4),
+        Length(5));
+    EXPECT_TRUE(conv->validateParameters().empty());
+
+    EXPECT_EQ(conv->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=ortho +lat_0=1 +lon_0=2 +alpha=3 +k=1.25 +x_0=4 +y_0=5");
+
+    EXPECT_EQ(conv->exportToWKT(WKTFormatter::create().get()),
+              "CONVERSION[\"Local Orthographic\",\n"
+              "    METHOD[\"Local Orthographic\",\n"
+              "        ID[\"EPSG\",1130]],\n"
+              "    PARAMETER[\"Latitude of projection centre\",1,\n"
+              "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+              "        ID[\"EPSG\",8811]],\n"
+              "    PARAMETER[\"Longitude of projection centre\",2,\n"
+              "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+              "        ID[\"EPSG\",8812]],\n"
+              "    PARAMETER[\"Azimuth at projection centre\",3,\n"
+              "        ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+              "        ID[\"EPSG\",8813]],\n"
+              "    PARAMETER[\"Scale factor at projection centre\",1.25,\n"
+              "        SCALEUNIT[\"unity\",1],\n"
+              "        ID[\"EPSG\",8815]],\n"
+              "    PARAMETER[\"Easting at projection centre\",4,\n"
+              "        LENGTHUNIT[\"metre\",1],\n"
+              "        ID[\"EPSG\",8816]],\n"
+              "    PARAMETER[\"Northing at projection centre\",5,\n"
+              "        LENGTHUNIT[\"metre\",1],\n"
+              "        ID[\"EPSG\",8817]]]");
+
+    EXPECT_EQ(
+        conv->exportToWKT(
+            WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL).get()),
+        "PROJECTION[\"Local Orthographic\"],\n"
+        "PARAMETER[\"latitude_of_center\",1],\n"
+        "PARAMETER[\"longitude_of_center\",2],\n"
+        "PARAMETER[\"azimuth\",3],\n"
+        "PARAMETER[\"scale_factor\",1.25],\n"
+        "PARAMETER[\"false_easting\",4],\n"
+        "PARAMETER[\"false_northing\",5]");
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(operation, american_polyconic_export) {
     auto conv = Conversion::createAmericanPolyconic(
         PropertyMap(), Angle(1), Angle(2), Length(4), Length(5));
@@ -4366,7 +4416,7 @@ TEST(operation, PROJ_based) {
                      PropertyMap(), "+proj=pipeline +step +proj=pipeline",
                      nullptr, nullptr)
                      ->exportToPROJString(PROJStringFormatter::create().get()),
-                 FormattingException);
+                 UnsupportedOperationException);
 }
 
 // ---------------------------------------------------------------------------
@@ -5712,6 +5762,8 @@ TEST(operation,
               "+step +inv +proj=vgridshift +grids=foo.gtx +multiplier=1 "
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
               "+step +proj=axisswap +order=2,1");
+
+    EXPECT_FALSE(transf->requiresPerCoordinateInputTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -5842,4 +5894,78 @@ TEST(operation, PointMotionOperation_with_epochs) {
         "+step +inv +proj=cart +ellps=GRS80 "
         "+step +proj=unitconvert +xy_in=rad +z_in=m +xy_out=deg +z_out=m "
         "+step +proj=axisswap +order=2,1");
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, export_of_Cartesian_Grid_Offsets_with_EngineeringCRS) {
+
+    auto wkt =
+        "COORDINATEOPERATION[\"CIG85 to GDA94 / MGA zone 48\",\n"
+        "    VERSION[\"GA-Cxr\"],\n"
+        "    SOURCECRS[\n"
+        "        ENGCRS[\"Christmas Island Grid 1985\",\n"
+        "            EDATUM[\"Christmas Island Datum 1985\"],\n"
+        "            CS[Cartesian,2],\n"
+        "                AXIS[\"(E)\",east,\n"
+        "                    ORDER[1],\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "                AXIS[\"(N)\",north,\n"
+        "                    ORDER[2],\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "            ID[\"EPSG\",6715]]],\n"
+        "    TARGETCRS[\n"
+        "        PROJCRS[\"GDA94 / MGA zone 48\",\n"
+        "            BASEGEOGCRS[\"GDA94\",\n"
+        "                DATUM[\"Geocentric Datum of Australia 1994\",\n"
+        "                    ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
+        "                        LENGTHUNIT[\"metre\",1]]],\n"
+        "                PRIMEM[\"Greenwich\",0,\n"
+        "                    ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "                ID[\"EPSG\",4283]],\n"
+        "            CONVERSION[\"Map Grid of Australia zone 48\",\n"
+        "                METHOD[\"Transverse Mercator\",\n"
+        "                    ID[\"EPSG\",9807]],\n"
+        "                PARAMETER[\"Latitude of natural origin\",0,\n"
+        "                    ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                    ID[\"EPSG\",8801]],\n"
+        "                PARAMETER[\"Longitude of natural origin\",105,\n"
+        "                    ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                    ID[\"EPSG\",8802]],\n"
+        "                PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+        "                    SCALEUNIT[\"unity\",1],\n"
+        "                    ID[\"EPSG\",8805]],\n"
+        "                PARAMETER[\"False easting\",500000,\n"
+        "                    LENGTHUNIT[\"metre\",1],\n"
+        "                    ID[\"EPSG\",8806]],\n"
+        "                PARAMETER[\"False northing\",10000000,\n"
+        "                    LENGTHUNIT[\"metre\",1],\n"
+        "                    ID[\"EPSG\",8807]]],\n"
+        "            CS[Cartesian,2],\n"
+        "                AXIS[\"(E)\",east,\n"
+        "                    ORDER[1],\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "                AXIS[\"(N)\",north,\n"
+        "                    ORDER[2],\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "            ID[\"EPSG\",28348]]],\n"
+        "    METHOD[\"Cartesian Grid Offsets\",\n"
+        "        ID[\"EPSG\",9656]],\n"
+        "    PARAMETER[\"Easting offset\",550015,\n"
+        "        LENGTHUNIT[\"metre\",1],\n"
+        "        ID[\"EPSG\",8728]],\n"
+        "    PARAMETER[\"Northing offset\",8780001,\n"
+        "        LENGTHUNIT[\"metre\",1],\n"
+        "        ID[\"EPSG\",8729]],\n"
+        "    OPERATIONACCURACY[5],\n"
+        "    ID[\"EPSG\",6724]]";
+
+    auto obj = WKTParser().createFromWKT(wkt);
+    auto transf = nn_dynamic_pointer_cast<Transformation>(obj);
+    ASSERT_TRUE(transf != nullptr);
+    EXPECT_EQ(transf->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=affine +xoff=550015 +yoff=8780001");
+    EXPECT_EQ(transf->inverse()->exportToPROJString(
+                  PROJStringFormatter::create().get()),
+              "+proj=affine +xoff=-550015 +yoff=-8780001");
 }

@@ -456,6 +456,8 @@ class PROJ_GCC_DLL PROJStringFormatter {
 
     PROJ_INTERNAL std::set<std::string> getUsedGridNames() const;
 
+    PROJ_INTERNAL bool requiresPerCoordinateInputTime() const;
+
     PROJ_INTERNAL void setTOWGS84Parameters(const std::vector<double> &params);
     PROJ_INTERNAL const std::vector<double> &getTOWGS84Parameters() const;
 
@@ -792,6 +794,7 @@ class PROJ_GCC_DLL WKTParser {
 
     PROJ_DLL WKTParser &setStrict(bool strict);
     PROJ_DLL std::list<std::string> warningList() const;
+    PROJ_DLL std::list<std::string> grammarErrorList() const;
 
     PROJ_DLL WKTParser &setUnsetIdentifiersIfIncompatibleDef(bool unset);
 
@@ -958,6 +961,11 @@ class PROJ_GCC_DLL DatabaseContext {
 
     PROJ_DLL std::vector<std::string>
     getVersionedAuthoritiesFromName(const std::string &authName);
+
+    PROJ_FOR_TEST bool
+    toWGS84AutocorrectWrongValues(double &tx, double &ty, double &tz,
+                                  double &rx, double &ry, double &rz,
+                                  double &scale_difference) const;
 
     //! @endcond
 

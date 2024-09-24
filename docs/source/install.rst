@@ -139,15 +139,32 @@ The following guides show how to compile and install the software using CMake.
     PROJ 9.0 and later releases only support builds using CMake.
 
 
-Build requirements
+Requirements
 --------------------------------------------------------------------------------
+
+Build requirements
+++++++++++++++++++
 
 - C99 compiler
 - C++11 compiler
 - CMake >= 3.16
-- SQLite3 >= 3.11: headers and library for target architecture, and sqlite3 executable for build architecture.
+- SQLite3 >= 3.11: headers and library for target architecture, and sqlite3 executable for build architecture
 - libtiff >= 4.0 (optional but recommended)
 - curl >= 7.29.0 (optional but recommended)
+- JSON for Modern C++ (nlohmann/json) >= 3.7.0; if not found as an external dependency then vendored version 3.9.1 from PROJ source tree is used
+
+.. _test_requirements:
+
+Test requirements
++++++++++++++++++
+
+These are only required if testing is built (see :option:`BUILD_TESTING`, default ON)
+
+- GoogleTest (GTest) >= 1.8.1; if not found and :option:`TESTING_USE_NETWORK` is ON, then version 1.12.1 is fetched from GitHub and locally installed
+- Python >= 3.7
+- `importlib_metadata <https://pypi.org/project/importlib-metadata/>`_ only needed for Python 3.7
+- One of either `PyYAML <https://pypi.org/project/PyYAML/>`_ or `ruamel.yaml <https://pypi.org/project/ruamel.yaml/>`_
+
 
 Build steps
 --------------------------------------------------------------------------------
@@ -268,8 +285,9 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
 .. option:: BUILD_TESTING=ON
 
-    CTest option to build the testing tree, which also downloads and installs
-    Googletest. Default is ON, but can be turned OFF if tests are not required.
+    CTest option to build the testing tree. Default is ON, but can be turned
+    OFF if tests are not required.
+    See :ref:`test requirements <test_requirements>` for other details.
 
     .. versionchanged:: 7.0
         Renamed from ``PROJ_TESTS``
@@ -286,6 +304,26 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
         ``-DCMAKE_BUILD_TYPE=Release`` (or similar) during configuration,
         or by specifying ``--config Release`` with CMake
         multi-configuration build tools (see example below).
+
+.. option:: PROJ_OUTPUT_NAME
+
+    .. versionadded:: 9.5
+
+    Sets the name of the PROJ library (excluding extension).
+    This generally defaults to "proj", except on Windows, where this defaults to
+    "proj_${PROJ_MAJOR_VERSION}" if APPEND_SOVERSION is OFF.
+
+    .. note::
+        For PROJ >= 6.0 and up to 9.4.1, on Windows, this was hardcoded to
+        "proj_${PROJ_MAJOR_VERSION}_${PROJ_MINOR_VERSION}".
+
+.. option:: APPEND_SOVERSION=OFF
+
+    .. versionadded:: 9.5
+
+    This variable can be set to ON for MinGW builds where BUILD_SHARED_LIBS=ON,
+    to add a "-${PROJ_SOVERSION}" suffix to the PROJ shared library name.
+    When this variable is set, PROJ_OUTPUT_NAME defaults to "proj"
 
 .. option:: CMAKE_C_COMPILER
 
@@ -343,6 +381,13 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
     Path to an ``sqlite3`` or ``sqlite3.exe`` executable.
 
+    .. note::
+
+        When cross-compiling, the executable pointed by EXE_SQLITE3 must be
+        of the same architecture as the host, *not* of the architecture you
+        build for. That sqlite3 binary is used to build the :file:`proj.db`
+        SQLite3 database from source .sql files.
+
 .. deprecated:: 9.4.0
     ``SQLITE3_INCLUDE_DIR`` and ``SQLITE3_LIBRARY`` should be replaced with
     ``SQLite3_INCLUDE_DIR`` and ``SQLite3_LIBRARY``, respectively.
@@ -386,6 +431,20 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
     Path to an existing directory used to cache :file:`proj.db` to speed-up
     subsequent builds without modifications to source SQL files.
+
+.. option:: TESTING_USE_NETWORK=ON
+
+    .. versionadded:: 9.5
+
+    Permit use of network to fetch :ref:`test requirements
+    <test_requirements>` (if needed)
+    and run network-dependent tests. Default ON.
+
+.. option:: EMBED_PROJ_DATA_PATH
+
+    .. versionadded:: 9.5
+
+    Embed ``PROJ_DATA`` hard-coded alternative path for data files location. Disable to avoid setting this non-relocatable hard-coded path. Default ON.
 
 
 Building on Windows with vcpkg and Visual Studio 2017 or 2019

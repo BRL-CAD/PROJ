@@ -211,6 +211,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
 
     PROJ_DLL bool hasBallparkTransformation() const;
 
+    PROJ_DLL bool requiresPerCoordinateInputTime() const;
+
     PROJ_DLL static const std::string OPERATION_VERSION_KEY;
 
     PROJ_DLL CoordinateOperationNNPtr normalizeForVisualization() const;
@@ -245,6 +247,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
     void setAccuracies(
         const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
     PROJ_INTERNAL void setHasBallparkTransformation(bool b);
+
+    PROJ_INTERNAL void setRequiresPerCoordinateInputTime(bool b);
 
     PROJ_INTERNAL void
     setSourceCoordinateEpoch(const util::optional<common::DataEpoch> &epoch);
@@ -1324,6 +1328,13 @@ class PROJ_GCC_DLL Conversion : public SingleOperation {
         const common::Angle &centerLong, const common::Length &falseEasting,
         const common::Length &falseNorthing);
 
+    PROJ_DLL static ConversionNNPtr createLocalOrthographic(
+        const util::PropertyMap &properties, const common::Angle &centerLat,
+        const common::Angle &centerLong,
+        const common::Angle &azimuthInitialLine, const common::Scale &scale,
+        const common::Length &falseEasting,
+        const common::Length &falseNorthing);
+
     PROJ_DLL static ConversionNNPtr createAmericanPolyconic(
         const util::PropertyMap &properties, const common::Angle &centerLat,
         const common::Angle &centerLong, const common::Length &falseEasting,
@@ -1683,6 +1694,12 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
         const common::Angle &offsetLong, const common::Length &offsetHeight,
         const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
 
+    PROJ_DLL static TransformationNNPtr createCartesianGridOffsets(
+        const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
+        const crs::CRSNNPtr &targetCRSIn, const common::Length &eastingOffset,
+        const common::Length &northingOffset,
+        const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
+
     PROJ_DLL static TransformationNNPtr createVerticalOffset(
         const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
         const crs::CRSNNPtr &targetCRSIn, const common::Length &offsetHeight,
@@ -1696,10 +1713,10 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
     PROJ_PRIVATE :
         //! @cond Doxygen_Suppress
         PROJ_INTERNAL const std::string &
-        getNTv2Filename() const;
+        getPROJ4NadgridsCompatibleFilename() const;
 
-    PROJ_FOR_TEST std::vector<double>
-    getTOWGS84Parameters() const; // throw(io::FormattingException)
+    PROJ_FOR_TEST std::vector<double> getTOWGS84Parameters(
+        bool canThrowException) const; // throw(io::FormattingException)
 
     PROJ_INTERNAL const std::string &getHeightToGeographic3DFilename() const;
 

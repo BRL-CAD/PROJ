@@ -2,9 +2,14 @@
 # with Travis-ci.org
 language: cpp
 
+# FIXME: Travis-CI builds are disabled
 branches:
-  except:
-  - /^(cherry-pick-)?backport-\d+-to-/
+  only:
+    - disabled_disabled
+
+#branches:
+#  except:
+#  - /^(cherry-pick-)?backport-\d+-to-/
 
 cache:
     directories:
@@ -14,13 +19,13 @@ matrix:
   fast_finish: true
   include:
 
-    - os: linux
-      dist: jammy
-      compiler: gcc
-      arch: s390x
-      env:
-        - BUILD_NAME=linux_generic
-        - DETAILS="linux, s390x"
+    #- os: linux
+    #  dist: jammy
+    #  compiler: gcc
+    #  arch: s390x
+    #  env:
+    #    - BUILD_NAME=linux_generic
+    #    - DETAILS="linux, s390x"
 
     - os: linux
       dist: jammy

@@ -1192,12 +1192,14 @@ TEST(operation, geogCRS_to_geogCRS_context_lonlat_vs_latlon_crs) {
         authFactory->createCoordinateReferenceSystem("10310"), // RGNC15
         ctxt);
     ASSERT_EQ(list.size(), 3U);
-    // Check that we get direct transformation, and not through WGS 84
+    EXPECT_EQ(list[0]->nameStr(),
+              "RGNC91-93 to WGS 84 (1) + Inverse of RGNC15 to WGS 84 (1)");
+    // Check that we get direct transformation, and not only through WGS 84
     // The difficulty here is that the transformation is registered between
     // "RGNC91-93 (lon-lat)" et "RGNC15 (lon-lat)"
-    EXPECT_EQ(list[0]->nameStr(), "axis order change (2D) + RGNC91-93 to "
-                                  "RGNC15 (2) + axis order change (2D)");
     EXPECT_EQ(list[1]->nameStr(), "axis order change (2D) + RGNC91-93 to "
+                                  "RGNC15 (2) + axis order change (2D)");
+    EXPECT_EQ(list[2]->nameStr(), "axis order change (2D) + RGNC91-93 to "
                                   "RGNC15 (1) + axis order change (2D)");
 }
 
@@ -1770,6 +1772,8 @@ TEST(operation,
         "+t_epoch=2000 +convention=position_vector +step +inv "
         "+proj=cart +ellps=GRS80 +step +proj=unitconvert +xy_in=rad "
         "+z_in=m +xy_out=deg +z_out=m +step +proj=axisswap +order=2,1");
+
+    EXPECT_TRUE(list[0]->requiresPerCoordinateInputTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -2683,6 +2687,68 @@ TEST(operation, projCRS_to_projCRS_context_incompatible_areas_ballpark) {
         ctxt);
     ASSERT_GE(list.size(), 1U);
     EXPECT_TRUE(list[0]->hasBallparkTransformation());
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, projCRS_to_projCRS_context_grid_offsets) {
+    auto authFactory =
+        AuthorityFactory::create(DatabaseContext::create(), "EPSG");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    ctxt->setSpatialCriterion(
+        CoordinateOperationContext::SpatialCriterion::PARTIAL_INTERSECTION);
+    {
+        auto list = CoordinateOperationFactory::create()->createOperations(
+            authFactory->createCoordinateReferenceSystem(
+                "3392"), // Karbala 1979 / UTM zone 38N
+            authFactory->createCoordinateReferenceSystem(
+                "3891"), // IGRS / UTM zone 38N
+            ctxt);
+        ASSERT_EQ(list.size(), 2U);
+        EXPECT_EQ(list[1]->nameStr(),
+                  "Karbala 1979 / UTM zone 38N to IGRS / UTM zone 38N (1)");
+        EXPECT_EQ(
+            list[1]->exportToPROJString(PROJStringFormatter::create().get()),
+            "+proj=affine +xoff=-287.54 +yoff=278.25");
+    }
+    {
+        auto list = CoordinateOperationFactory::create()->createOperations(
+            authFactory->createCoordinateReferenceSystem(
+                "3891"), // IGRS / UTM zone 38N
+            authFactory->createCoordinateReferenceSystem(
+                "3392"), // Karbala 1979 / UTM zone 38N
+            ctxt);
+        ASSERT_EQ(list.size(), 2U);
+        EXPECT_EQ(list[1]->nameStr(), "Inverse of Karbala 1979 / UTM zone 38N "
+                                      "to IGRS / UTM zone 38N (1)");
+        EXPECT_EQ(
+            list[1]->exportToPROJString(PROJStringFormatter::create().get()),
+            "+proj=affine +xoff=287.54 +yoff=-278.25");
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, projCRS_to_projCRS_context_grid_offsets_non_metre_unit_noop) {
+    auto authFactory =
+        AuthorityFactory::create(DatabaseContext::create(), "EPSG");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    ctxt->setSpatialCriterion(
+        CoordinateOperationContext::SpatialCriterion::PARTIAL_INTERSECTION);
+    ctxt->setGridAvailabilityUse(
+        CoordinateOperationContext::GridAvailabilityUse::
+            IGNORE_GRID_AVAILABILITY);
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        authFactory->createCoordinateReferenceSystem(
+            "10516"), // NAD83(2011) / Adjusted Jackson (ftUS)
+        authFactory->createCoordinateReferenceSystem(
+            "8162"), // NAD83(HARN) / WISCRS Jackson (ftUS)
+        ctxt);
+    ASSERT_GE(list.size(), 2U);
+    EXPECT_EQ(list[0]->nameStr(), "NAD83(2011) / Adjusted Jackson (ftUS) to "
+                                  "NAD83(HARN) / WISCRS Jackson (ftUS) (1)");
+    EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=noop");
 }
 
 // ---------------------------------------------------------------------------
@@ -4998,6 +5064,91 @@ TEST(operation, compoundCRS_with_vert_bound_to_bound_geog3D) {
 
 // ---------------------------------------------------------------------------
 
+TEST(operation,
+     compoundCRS_with_derivedVerticalCRS_ellipsoidal_height_to_geog) {
+    // Test scenario of https://github.com/OSGeo/PROJ/issues/4175
+    // Note that the CompoundCRS with a DerivedVerticalCRS with a "Ellipsoid"
+    // datum is an extension, not OGC Topic 2 compliant.
+
+    auto wkt =
+        "COMPOUNDCRS[\"UTM30 with vertical offset\",\n"
+        "    PROJCRS[\"WGS 84 / UTM zone 30N\",\n"
+        "        BASEGEOGCRS[\"WGS 84\",\n"
+        "            ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n"
+        "                MEMBER[\"World Geodetic System 1984 (Transit)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G730)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G873)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1150)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
+        "                ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "                ENSEMBLEACCURACY[2.0]],\n"
+        "            PRIMEM[\"Greenwich\",0,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "            ID[\"EPSG\",4326]],\n"
+        "        CONVERSION[\"UTM zone 30N\",\n"
+        "            METHOD[\"Transverse Mercator\",\n"
+        "                ID[\"EPSG\",9807]],\n"
+        "            PARAMETER[\"Latitude of natural origin\",0,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                ID[\"EPSG\",8801]],\n"
+        "            PARAMETER[\"Longitude of natural origin\",-3,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                ID[\"EPSG\",8802]],\n"
+        "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+        "                SCALEUNIT[\"unity\",1],\n"
+        "                ID[\"EPSG\",8805]],\n"
+        "            PARAMETER[\"False easting\",500000,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8806]],\n"
+        "            PARAMETER[\"False northing\",0,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8807]]],\n"
+        "        CS[Cartesian,2],\n"
+        "            AXIS[\"(E)\",east,\n"
+        "                ORDER[1],\n"
+        "                LENGTHUNIT[\"metre\",1]],\n"
+        "            AXIS[\"(N)\",north,\n"
+        "                ORDER[2],\n"
+        "                LENGTHUNIT[\"metre\",1]],\n"
+        "        ID[\"EPSG\",32630]],\n"
+        "    VERTCRS[\"Derived verticalCRS\",\n"
+        "        BASEVERTCRS[\"Ellipsoid (metre)\",\n"
+        "            VDATUM[\"Ellipsoid\"]],\n"
+        "        DERIVINGCONVERSION[\"Conv Vertical Offset\",\n"
+        "            METHOD[\"Vertical Offset\",\n"
+        "                ID[\"EPSG\",9616]],\n"
+        "            PARAMETER[\"Vertical Offset\",42.3,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8603]]],\n"
+        "        CS[vertical,1],\n"
+        "            AXIS[\"gravity-related height (H)\",up,\n"
+        "                LENGTHUNIT[\"metre\",1,\n"
+        "                    ID[\"EPSG\",9001]]]]]";
+    auto objDst = WKTParser().createFromWKT(wkt);
+    auto dst = nn_dynamic_pointer_cast<CRS>(objDst);
+    ASSERT_TRUE(dst != nullptr);
+
+    auto op = CoordinateOperationFactory::create()->createOperation(
+        GeographicCRS::EPSG_4979, NN_NO_CHECK(dst));
+    ASSERT_TRUE(op != nullptr);
+    EXPECT_EQ(op->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=pipeline "
+              "+step +proj=axisswap +order=2,1 "
+              "+step +proj=unitconvert +xy_in=deg +xy_out=rad "
+              "+step +proj=geogoffset +dh=42.3 "
+              "+step +proj=utm +zone=30 +ellps=WGS84");
+    EXPECT_STREQ(op->nameStr().c_str(), "Conv Vertical Offset + UTM zone 30N");
+    EXPECT_FALSE(op->hasBallparkTransformation());
+    ASSERT_EQ(op->coordinateOperationAccuracies().size(), 1U);
+    EXPECT_EQ(op->coordinateOperationAccuracies()[0]->value(), "0");
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(operation, geocent_to_compoundCRS) {
     auto objSrc = PROJStringParser().createFromPROJString(
         "+proj=geocent +datum=WGS84 +units=m +type=crs");
@@ -6259,6 +6410,106 @@ TEST(operation,
             list[0]->exportToPROJString(PROJStringFormatter::create().get()),
             expected_proj);
     }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation,
+     compoundCRS_to_compoundCRS_with_derivedVerticalCRS_ellipsoidal_height) {
+    // Test scenario of https://github.com/OSGeo/PROJ/issues/4175
+    // Note that the CompoundCRS with a DerivedVerticalCRS with a "Ellipsoid"
+    // datum is an extension, not OGC Topic 2 compliant.
+
+    auto dbContext = DatabaseContext::create();
+    auto authFactory = AuthorityFactory::create(dbContext, std::string());
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    ctxt->setGridAvailabilityUse(
+        CoordinateOperationContext::GridAvailabilityUse::
+            IGNORE_GRID_AVAILABILITY);
+
+    // WGS84 + EGM96
+    auto objSrc = createFromUserInput("EPSG:4326+5773", dbContext);
+    auto src = nn_dynamic_pointer_cast<CompoundCRS>(objSrc);
+    ASSERT_TRUE(src != nullptr);
+
+    //
+    auto wkt =
+        "COMPOUNDCRS[\"UTM30 with vertical offset\",\n"
+        "    PROJCRS[\"WGS 84 / UTM zone 30N\",\n"
+        "        BASEGEOGCRS[\"WGS 84\",\n"
+        "            ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n"
+        "                MEMBER[\"World Geodetic System 1984 (Transit)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G730)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G873)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1150)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+        "                MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
+        "                ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+        "                    LENGTHUNIT[\"metre\",1]],\n"
+        "                ENSEMBLEACCURACY[2.0]],\n"
+        "            PRIMEM[\"Greenwich\",0,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "            ID[\"EPSG\",4326]],\n"
+        "        CONVERSION[\"UTM zone 30N\",\n"
+        "            METHOD[\"Transverse Mercator\",\n"
+        "                ID[\"EPSG\",9807]],\n"
+        "            PARAMETER[\"Latitude of natural origin\",0,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                ID[\"EPSG\",8801]],\n"
+        "            PARAMETER[\"Longitude of natural origin\",-3,\n"
+        "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+        "                ID[\"EPSG\",8802]],\n"
+        "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+        "                SCALEUNIT[\"unity\",1],\n"
+        "                ID[\"EPSG\",8805]],\n"
+        "            PARAMETER[\"False easting\",500000,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8806]],\n"
+        "            PARAMETER[\"False northing\",0,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8807]]],\n"
+        "        CS[Cartesian,2],\n"
+        "            AXIS[\"(E)\",east,\n"
+        "                ORDER[1],\n"
+        "                LENGTHUNIT[\"metre\",1]],\n"
+        "            AXIS[\"(N)\",north,\n"
+        "                ORDER[2],\n"
+        "                LENGTHUNIT[\"metre\",1]],\n"
+        "        ID[\"EPSG\",32630]],\n"
+        "    VERTCRS[\"Derived verticalCRS\",\n"
+        "        BASEVERTCRS[\"Ellipsoid (metre)\",\n"
+        "            VDATUM[\"Ellipsoid\"]],\n"
+        "        DERIVINGCONVERSION[\"Conv Vertical Offset\",\n"
+        "            METHOD[\"Vertical Offset\",\n"
+        "                ID[\"EPSG\",9616]],\n"
+        "            PARAMETER[\"Vertical Offset\",42.3,\n"
+        "                LENGTHUNIT[\"metre\",1],\n"
+        "                ID[\"EPSG\",8603]]],\n"
+        "        CS[vertical,1],\n"
+        "            AXIS[\"gravity-related height (H)\",up,\n"
+        "                LENGTHUNIT[\"metre\",1,\n"
+        "                    ID[\"EPSG\",9001]]]]]";
+    auto objDst =
+        WKTParser().attachDatabaseContext(dbContext).createFromWKT(wkt);
+    auto dst = nn_dynamic_pointer_cast<CRS>(objDst);
+    ASSERT_TRUE(dst != nullptr);
+
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        NN_NO_CHECK(src), NN_NO_CHECK(dst), ctxt);
+    ASSERT_GE(list.size(), 1U);
+    EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=pipeline "
+              "+step +proj=axisswap +order=2,1 "
+              "+step +proj=unitconvert +xy_in=deg +xy_out=rad "
+              "+step +proj=vgridshift +grids=us_nga_egm96_15.tif +multiplier=1 "
+              "+step +proj=geogoffset +dh=42.3 "
+              "+step +proj=utm +zone=30 +ellps=WGS84");
+    EXPECT_STREQ(list[0]->nameStr().c_str(),
+                 "Inverse of WGS 84 to EGM96 height (1) + Conv Vertical Offset "
+                 "+ UTM zone 30N");
+    EXPECT_FALSE(list[0]->hasBallparkTransformation());
 }
 
 // ---------------------------------------------------------------------------
@@ -9923,6 +10174,8 @@ TEST(operation, createOperation_derived_projected_crs) {
               "+step +proj=axisswap +order=2,1");
 }
 
+// ---------------------------------------------------------------------------
+
 TEST(operation,
      geogCRS_to_compoundCRS_with_boundVerticalCRS_and_derivedProjected) {
     auto wkt =
@@ -10501,7 +10754,7 @@ TEST(
               "+x_0=304800 +y_0=0 +ellps=GRS80 "
               "+step +proj=vgridshift +grids=ca_nrc_HT2_1997.tif +multiplier=1 "
               "+step +proj=cart +ellps=GRS80 "
-              "+step +inv +proj=deformation +dt=-13 "
+              "+step +proj=deformation +dt=13 "
               "+grids=ca_nrc_NAD83v70VG.tif "
               "+ellps=GRS80 "
               "+step +inv +proj=cart +ellps=GRS80 "
@@ -10575,8 +10828,8 @@ TEST(operation, createOperation_Geographic3D_Offset_by_velocity_grid) {
               "+step +proj=axisswap +order=2,1 "
               "+step +proj=unitconvert +xy_in=deg +z_in=m +xy_out=rad +z_out=m "
               "+step +proj=cart +ellps=GRS80 "
-              "+step +proj=deformation +dt=-13 +grids=ca_nrc_NAD83v70VG.tif "
-              "+ellps=GRS80 "
+              "+step +inv +proj=deformation +dt=13 "
+              "+grids=ca_nrc_NAD83v70VG.tif +ellps=GRS80 "
               "+step +inv +proj=cart +ellps=GRS80 "
               "+step +proj=unitconvert +xy_in=rad +z_in=m +xy_out=deg +z_out=m "
               "+step +proj=axisswap +order=2,1");
@@ -10608,7 +10861,7 @@ TEST(operation, createOperation_test_createOperationsWithDatumPivot_iter_1) {
     EXPECT_STREQ(list[0]->nameStr().c_str(),
                  "Conversion from NAD83(CSRS)v2 (geog2D) to "
                  "NAD83(CSRS)v2 (geocentric) + "
-                 "NAD83(CSRS)v2 to NAD83(CSRS)v3 (1) + "
+                 "NAD83(CSRS)v2 to NAD83(CSRS)v3 (3) + "
                  "Conversion from NAD83(CSRS)v3 (geocentric) to "
                  "NAD83(CSRS)v3 (geog2D)");
     EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
@@ -10653,4 +10906,71 @@ TEST(operation, createOperation_Vrtical_Offset_by_velocity_grid) {
               "+step +proj=pop +v_1 +v_2 "
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
               "+step +proj=axisswap +order=2,1");
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, createOperation_epsg_10622_local_orthographic) {
+    auto dbContext = DatabaseContext::create();
+
+    auto objSrc = createFromUserInput("EPSG:6318", dbContext);
+    auto src = nn_dynamic_pointer_cast<CRS>(objSrc);
+    ASSERT_TRUE(src != nullptr);
+
+    auto objDest = createFromUserInput("EPSG:10622", dbContext);
+    auto dst = nn_dynamic_pointer_cast<CRS>(objDest);
+    ASSERT_TRUE(dst != nullptr);
+
+    auto ctxt = CoordinateOperationContext::create(
+        AuthorityFactory::create(dbContext, std::string()), nullptr, 0);
+    ctxt->setSpatialCriterion(
+        CoordinateOperationContext::SpatialCriterion::PARTIAL_INTERSECTION);
+    ctxt->setGridAvailabilityUse(
+        CoordinateOperationContext::GridAvailabilityUse::
+            IGNORE_GRID_AVAILABILITY);
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        NN_NO_CHECK(src), NN_NO_CHECK(dst), ctxt);
+    ASSERT_GE(list.size(), 1U);
+    EXPECT_FALSE(list[0]->hasBallparkTransformation());
+    EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
+              "+proj=pipeline +step +proj=axisswap +order=2,1 +step "
+              "+proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=ortho "
+              "+lat_0=37.6289686531 +lon_0=-122.3939412704 "
+              "+alpha=27.7928209333 +k=0.9999968 +x_0=0 +y_0=0 +ellps=GRS80 "
+              "+step +proj=unitconvert +xy_in=m +xy_out=us-ft");
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, createOperation_ITRF2000_to_ETRS89) {
+    auto dbContext = DatabaseContext::create();
+    auto authFactory = AuthorityFactory::create(dbContext, std::string());
+    auto authFactoryEPSG = AuthorityFactory::create(dbContext, "EPSG");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    ctxt->setSpatialCriterion(
+        CoordinateOperationContext::SpatialCriterion::PARTIAL_INTERSECTION);
+    ctxt->setGridAvailabilityUse(
+        CoordinateOperationContext::GridAvailabilityUse::
+            IGNORE_GRID_AVAILABILITY);
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        // ITRF2000
+        authFactoryEPSG->createCoordinateReferenceSystem("9989"),
+        // ETRS89
+        authFactoryEPSG->createCoordinateReferenceSystem("4937"), ctxt);
+
+    // Check that we find a mix of grid-based (NKG ones, with very narrow area
+    // of use, but easier to lookup) and non-grid based operations (wider area
+    // of use, but require more effort to infer)
+    bool foundNonGridBasedOp = false;
+    bool foundGridBaseOp = false;
+    for (const auto &op : list) {
+        if (!op->hasBallparkTransformation()) {
+            if (op->gridsNeeded(dbContext, false).empty())
+                foundNonGridBasedOp = true;
+            else
+                foundGridBaseOp = true;
+        }
+    }
+    EXPECT_TRUE(foundNonGridBasedOp);
+    EXPECT_TRUE(foundGridBaseOp);
 }

@@ -126,7 +126,7 @@ constexpr const char *CS_TYPE_ORDINAL = cs::OrdinalCS::WKT2_TYPE;
 constexpr int DATABASE_LAYOUT_VERSION_MAJOR = 1;
 // If the code depends on the new additions, then DATABASE_LAYOUT_VERSION_MINOR
 // must be incremented.
-constexpr int DATABASE_LAYOUT_VERSION_MINOR = 3;
+constexpr int DATABASE_LAYOUT_VERSION_MINOR = 4;
 
 constexpr size_t N_MAX_PARAMS = 7;
 
@@ -627,8 +627,20 @@ SQLiteHandleCache::getHandle(const std::string &path, PJ_CONTEXT *ctx) {
 #ifdef REOPEN_SQLITE_DB_AFTER_FORK
     if (firstTime_) {
         firstTime_ = false;
-        pthread_atfork(nullptr, nullptr,
-                       []() { SQLiteHandleCache::get().invalidateHandles(); });
+        pthread_atfork(
+            []() {
+                // This mutex needs to be acquired by 'invalidateHandles()'.
+                // The forking thread needs to own this mutex during the fork.
+                // Otherwise there's an opporunity for another thread to own
+                // the mutex during the fork, leaving the child process unable
+                // to acquire the mutex in invalidateHandles().
+                SQLiteHandleCache::get().sMutex_.lock();
+            },
+            []() { SQLiteHandleCache::get().sMutex_.unlock(); },
+            []() {
+                SQLiteHandleCache::get().sMutex_.unlock();
+                SQLiteHandleCache::get().invalidateHandles();
+            });
     }
 #endif
 
@@ -3849,6 +3861,98 @@ DatabaseContext::getTransformationsForGridName(
                              ->createCoordinateOperation(row[1], true));
     }
     return res;
+}
+
+// ---------------------------------------------------------------------------
+
+// Fixes wrong towgs84 values returned by epsg.io when using a Coordinate Frame
+// transformation, where they neglect to reverse the sign of the rotation terms.
+// Cf https://github.com/OSGeo/PROJ/issues/4170 and
+// https://github.com/maptiler/epsg.io/issues/194
+// We do that only when we found a valid Coordinate Frame rotation that
+// has the same numeric values (and no corresponding Position Vector
+// transformation with same values, or Coordinate Frame transformation with
+// opposite sign for rotation terms, both are highly unlikely)
+bool DatabaseContext::toWGS84AutocorrectWrongValues(
+    double &tx, double &ty, double &tz, double &rx, double &ry, double &rz,
+    double &scale_difference) const {
+    if (rx == 0 && ry == 0 && rz == 0)
+        return false;
+    // 9606: Coordinate Frame rotation (geog2D domain)
+    // 9607: Position Vector transformation (geog2D domain)
+    std::string sql(
+        "SELECT DISTINCT method_code "
+        "FROM helmert_transformation_table WHERE "
+        "abs(tx - ?) <= 1e-8 * abs(tx) AND "
+        "abs(ty - ?) <= 1e-8 * abs(ty) AND "
+        "abs(tz - ?) <= 1e-8 * abs(tz) AND "
+        "abs(rx - ?) <= 1e-8 * abs(rx) AND "
+        "abs(ry - ?) <= 1e-8 * abs(ry) AND "
+        "abs(rz - ?) <= 1e-8 * abs(rz) AND "
+        "abs(scale_difference - ?) <= 1e-8 * abs(scale_difference) AND "
+        "method_auth_name = 'EPSG' AND "
+        "method_code IN (9606, 9607) AND "
+        "translation_uom_auth_name = 'EPSG' AND "
+        "translation_uom_code = 9001 AND " // metre
+        "rotation_uom_auth_name = 'EPSG' AND "
+        "rotation_uom_code = 9104 AND " // arc-second
+        "scale_difference_uom_auth_name = 'EPSG' AND "
+        "scale_difference_uom_code = 9202 AND " // parts per million
+        "deprecated = 0");
+    ListOfParams params;
+    params.emplace_back(tx);
+    params.emplace_back(ty);
+    params.emplace_back(tz);
+    params.emplace_back(rx);
+    params.emplace_back(ry);
+    params.emplace_back(rz);
+    params.emplace_back(scale_difference);
+    bool bFound9606 = false;
+    bool bFound9607 = false;
+    for (const auto &row : d->run(sql, params)) {
+        if (row[0] == "9606") {
+            bFound9606 = true;
+        } else if (row[0] == "9607") {
+            bFound9607 = true;
+        }
+    }
+    if (bFound9607 && !bFound9606) {
+        params.clear();
+        params.emplace_back(tx);
+        params.emplace_back(ty);
+        params.emplace_back(tz);
+        params.emplace_back(-rx);
+        params.emplace_back(-ry);
+        params.emplace_back(-rz);
+        params.emplace_back(scale_difference);
+        if (d->run(sql, params).empty()) {
+            if (d->pjCtxt()) {
+                pj_log(d->pjCtxt(), PJ_LOG_ERROR,
+                       "Auto-correcting wrong sign of rotation terms of "
+                       "TOWGS84 clause from %s,%s,%s,%s,%s,%s,%s to "
+                       "%s,%s,%s,%s,%s,%s,%s",
+                       internal::toString(tx).c_str(),
+                       internal::toString(ty).c_str(),
+                       internal::toString(tz).c_str(),
+                       internal::toString(rx).c_str(),
+                       internal::toString(ry).c_str(),
+                       internal::toString(rz).c_str(),
+                       internal::toString(scale_difference).c_str(),
+                       internal::toString(tx).c_str(),
+                       internal::toString(ty).c_str(),
+                       internal::toString(tz).c_str(),
+                       internal::toString(-rx).c_str(),
+                       internal::toString(-ry).c_str(),
+                       internal::toString(-rz).c_str(),
+                       internal::toString(scale_difference).c_str());
+            }
+            rx = -rx;
+            ry = -ry;
+            rz = -rz;
+            return true;
+        }
+    }
+    return false;
 }
 
 //! @endcond
@@ -8035,6 +8139,25 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
         }
     }
 
+    std::string sourceDatumPubDate;
+    const auto sourceDatum = sourceGeodCRS->datumNonNull(d->context());
+    if (sourceDatum->publicationDate().has_value()) {
+        sourceDatumPubDate = sourceDatum->publicationDate()->toString();
+    }
+
+    std::string targetDatumPubDate;
+    const auto targetDatum = targetGeodCRS->datumNonNull(d->context());
+    if (targetDatum->publicationDate().has_value()) {
+        targetDatumPubDate = targetDatum->publicationDate()->toString();
+    }
+
+    const std::string mostAncientDatumPubDate =
+        (!targetDatumPubDate.empty() &&
+         (sourceDatumPubDate.empty() ||
+          targetDatumPubDate < sourceDatumPubDate))
+            ? targetDatumPubDate
+            : sourceDatumPubDate;
+
     auto opFactory = operation::CoordinateOperationFactory::create();
     for (const auto &pair : candidates) {
         const auto &trfmSource = pair.first;
@@ -8060,6 +8183,37 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
         const auto &op2Target = op2NN->targetCRS();
         if (!(op1Source && op1Target && op2Source && op2Target)) {
             continue;
+        }
+
+        // Skip operations using a datum that is older than the source or
+        // target datum (e.g to avoid ED50 to WGS84 to go through NTF)
+        if (!mostAncientDatumPubDate.empty()) {
+            const auto isOlderCRS = [this, &mostAncientDatumPubDate](
+                                        const crs::CRSPtr &crs) {
+                const auto geogCRS =
+                    dynamic_cast<const crs::GeodeticCRS *>(crs.get());
+                if (geogCRS) {
+                    const auto datum = geogCRS->datumNonNull(d->context());
+                    // Hum, theoretically we'd want to check
+                    // datum->publicationDate()->toString() <
+                    // mostAncientDatumPubDate but that would exclude doing
+                    // IG05/12 Intermediate CRS to ITRF2014 through ITRF2008,
+                    // since IG05/12 Intermediate CRS has been published later
+                    // than ITRF2008. So use a cut of date for ancient vs
+                    // "modern" era.
+                    constexpr const char *CUT_OFF_DATE = "1900-01-01";
+                    if (datum->publicationDate().has_value() &&
+                        datum->publicationDate()->toString() < CUT_OFF_DATE &&
+                        mostAncientDatumPubDate > CUT_OFF_DATE) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            if (isOlderCRS(op1Source) || isOlderCRS(op1Target) ||
+                isOlderCRS(op2Source) || isOlderCRS(op2Target))
+                continue;
         }
 
         std::vector<operation::CoordinateOperationNNPtr> steps;

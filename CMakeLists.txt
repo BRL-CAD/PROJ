@@ -63,9 +63,11 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
   set(PROJ_C_WARN_FLAGS ${PROJ_common_WARN_FLAGS}
     -Wmissing-prototypes
   )
+  if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8)
+        set(PROJ_CXX_WARN_FLAGS ${PROJ_common_WARN_FLAGS} -Wextra-semi)
+  endif()
   set(PROJ_CXX_WARN_FLAGS ${PROJ_common_WARN_FLAGS}
     -Weffc++
-    -Wextra-semi
     # -Wold-style-cast
     -Woverloaded-virtual
     -Wzero-as-null-pointer-constant
@@ -141,7 +143,7 @@ message(STATUS "Configuring PROJ:")
 #PROJ version information
 ################################################################################
 include(ProjVersion)
-proj_version(MAJOR 9 MINOR 4 PATCH 1)
+proj_version(MAJOR 9 MINOR 5 PATCH 0)
 set(PROJ_SOVERSION 25)
 set(PROJ_BUILD_VERSION "${PROJ_SOVERSION}.${PROJ_VERSION}")
 
@@ -265,6 +267,8 @@ endif()
 
 ################################################################################
 
+option(EMBED_PROJ_DATA_PATH "Whether the PROJ_DATA_PATH should be embedded" ON)
+
 if(DEFINED PROJ_LIB_ENV_VAR_TRIED_LAST)
   set(PROJ_DATA_ENV_VAR_TRIED_LAST ${PROJ_LIB_ENV_VAR_TRIED_LAST})
   message(WARNING "PROJ_LIB_ENV_VAR_TRIED_LAST option has been renamed to PROJ_DATA_ENV_VAR_TRIED_LAST. PROJ_LIB_ENV_VAR_TRIED_LAST is still working for now, but may be completely replaced by PROJ_DATA_ENV_VAR_TRIED_LAST in a future release")
@@ -364,7 +368,7 @@ if(BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
-set(docfiles COPYING NEWS AUTHORS)
+set(docfiles COPYING NEWS.md AUTHORS.md)
 install(FILES ${docfiles}
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
@@ -403,7 +407,7 @@ set(CPACK_SOURCE_IGNORE_FILES
   /Dockerfile
   /docs/
   /Doxyfile
-  /HOWTO-RELEASE
+  /HOWTO-RELEASE.md
   /m4/lt*
   /m4/libtool*
   /media/
@@ -418,18 +422,10 @@ set(CPACK_SOURCE_IGNORE_FILES
 
 include(CPack)
 
-# Simplify README.md to README
-add_custom_target(README
-  COMMAND ${CMAKE_COMMAND}
-    -D PROJ_SOURCE_DIR=${PROJ_SOURCE_DIR}
-    -P ${PROJ_SOURCE_DIR}/cmake/ProjReadme.cmake
-)
-
 get_property(_is_multi_config_generator GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(NOT _is_multi_config_generator)
   add_custom_target(dist
     COMMAND ${CMAKE_MAKE_PROGRAM} package_source
-    DEPENDS README
   )
   message(STATUS "PROJ: Configured 'dist' target")
 endif()

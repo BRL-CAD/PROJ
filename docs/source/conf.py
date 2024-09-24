@@ -25,13 +25,13 @@ title = "PROJ coordinate transformation software library"
 author = "PROJ contributors"
 
 # The major project version, used as the replacement for |version|
-version = "9.4"
+version = "9.5"
 
 # The full project version, used as the replacement for |release|
-release = "9.4.0"
+release = "9.5.0-dev"
 
 # PROJ-data version
-data_version = "1.17"
+data_version = "1.19"
 
 #today_date = date.today()
 today_date = date(2024, 3, 1)  # or use a specific date
@@ -267,3 +267,14 @@ texinfo_documents = [
 
 source_file_root = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 source_file_url_template = "https://github.com/OSGeo/PROJ/blob/master/{}"
+
+# -- Specifics when documentation is built on ReadTheDocs infra
+
+# Cf https://about.readthedocs.com/blog/2024/07/addons-by-default
+
+# Define the canonical URL if you are using a custom domain on Read the Docs
+html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
+
+# Tell Jinja2 templates the build is running on Read the Docs
+if os.environ.get("READTHEDOCS", "") == "True":
+    html_context["READTHEDOCS"] = True

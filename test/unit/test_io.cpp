@@ -4244,6 +4244,36 @@ TEST(wkt_parse, conversion_proj_based) {
 
 // ---------------------------------------------------------------------------
 
+TEST(wkt_parse, conversion_utm_zone_south_wrong_id) {
+
+    auto wkt = "CONVERSION[\"UTM zone 55S\","
+               "    METHOD[\"Transverse Mercator\","
+               "        ID[\"EPSG\",9807]],"
+               "    PARAMETER[\"Latitude of natural origin\",0,"
+               "        ANGLEUNIT[\"Degree\",0.0174532925199433],"
+               "        ID[\"EPSG\",8801]],"
+               "    PARAMETER[\"Longitude of natural origin\",147,"
+               "        ANGLEUNIT[\"Degree\",0.0174532925199433],"
+               "        ID[\"EPSG\",8802]],"
+               "    PARAMETER[\"Scale factor at natural origin\",0.9996,"
+               "        SCALEUNIT[\"unity\",1],"
+               "        ID[\"EPSG\",8805]],"
+               "    PARAMETER[\"False easting\",500000,"
+               "        LENGTHUNIT[\"metre\",1],"
+               "        ID[\"EPSG\",8806]],"
+               "    PARAMETER[\"False northing\",10000000,"
+               "        LENGTHUNIT[\"metre\",1],"
+               "        ID[\"EPSG\",8807]],"
+               "    ID[\"EPSG\",17055]]"; // wrong code
+
+    auto obj = WKTParser().createFromWKT(wkt);
+    auto conv = nn_dynamic_pointer_cast<Conversion>(obj);
+    ASSERT_TRUE(conv != nullptr);
+    EXPECT_EQ(conv->getEPSGCode(), 16155); // code fixed on import
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(wkt_parse, CONCATENATEDOPERATION) {
 
     auto transf_1 = Transformation::create(
@@ -5003,7 +5033,7 @@ TEST(wkt_parse, BOUNDCRS_transformation_from_names) {
     EXPECT_EQ(crs->transformation()->sourceCRS()->nameStr(),
               projcrs->baseCRS()->nameStr());
 
-    auto params = crs->transformation()->getTOWGS84Parameters();
+    auto params = crs->transformation()->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
     ASSERT_EQ(params.size(), expected.size());
     for (int i = 0; i < 7; i++) {
@@ -5052,7 +5082,7 @@ TEST(wkt_parse, BOUNDCRS_transformation_from_codes) {
     EXPECT_EQ(crs->transformation()->sourceCRS()->nameStr(),
               projcrs->baseCRS()->nameStr());
 
-    auto params = crs->transformation()->getTOWGS84Parameters();
+    auto params = crs->transformation()->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
     ASSERT_EQ(params.size(), expected.size());
     for (int i = 0; i < 7; i++) {
@@ -5194,7 +5224,7 @@ TEST(wkt_parse, geogcs_TOWGS84_3terms) {
     ASSERT_TRUE(crs->transformation()->sourceCRS() != nullptr);
     EXPECT_EQ(crs->transformation()->sourceCRS()->nameStr(), "my GEOGCRS");
 
-    auto params = crs->transformation()->getTOWGS84Parameters();
+    auto params = crs->transformation()->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0};
     ASSERT_EQ(params.size(), expected.size());
     for (int i = 0; i < 7; i++) {
@@ -5240,8 +5270,52 @@ TEST(wkt_parse, projcs_TOWGS84_7terms) {
     ASSERT_TRUE(crs->transformation()->sourceCRS() != nullptr);
     EXPECT_EQ(crs->transformation()->sourceCRS()->nameStr(), "my GEOGCRS");
 
-    auto params = crs->transformation()->getTOWGS84Parameters();
+    auto params = crs->transformation()->getTOWGS84Parameters(true);
     auto expected = std::vector<double>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    ASSERT_EQ(params.size(), expected.size());
+    for (int i = 0; i < 7; i++) {
+        EXPECT_NEAR(params[i], expected[i], 1e-10);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projcs_TOWGS84_7terms_autocorrect) {
+    // Auto-correct wrong sign for rotation terms
+    // Cf https://github.com/OSGeo/PROJ/issues/4170
+    auto wkt =
+        "PROJCS[\"BD72 / Belgian Lambert 72\",\n"
+        "    GEOGCS[\"BD72\",\n"
+        "        DATUM[\"Reseau_National_Belge_1972\",\n"
+        "            SPHEROID[\"International 1924\",6378388,297],\n"
+        "            "
+        "TOWGS84[-106.8686,52.2978,-103.7239,-0.3366,0.457,-1.8422,-1.2747]],\n"
+        "        PRIMEM[\"Greenwich\",0,\n"
+        "            AUTHORITY[\"EPSG\",\"8901\"]],\n"
+        "        UNIT[\"degree\",0.0174532925199433,\n"
+        "            AUTHORITY[\"EPSG\",\"9122\"]],\n"
+        "        AUTHORITY[\"EPSG\",\"4313\"]],\n"
+        "    PROJECTION[\"Lambert_Conformal_Conic_2SP\"],\n"
+        "    PARAMETER[\"latitude_of_origin\",90],\n"
+        "    PARAMETER[\"central_meridian\",4.36748666666667],\n"
+        "    PARAMETER[\"standard_parallel_1\",51.1666672333333],\n"
+        "    PARAMETER[\"standard_parallel_2\",49.8333339],\n"
+        "    PARAMETER[\"false_easting\",150000.013],\n"
+        "    PARAMETER[\"false_northing\",5400088.438],\n"
+        "    UNIT[\"metre\",1,\n"
+        "        AUTHORITY[\"EPSG\",\"9001\"]],\n"
+        "    AXIS[\"Easting\",EAST],\n"
+        "    AXIS[\"Northing\",NORTH],\n"
+        "    AUTHORITY[\"EPSG\",\"31370\"]]";
+
+    auto dbContext = DatabaseContext::create();
+    auto obj = WKTParser().attachDatabaseContext(dbContext).createFromWKT(wkt);
+    auto crs = nn_dynamic_pointer_cast<BoundCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+
+    auto params = crs->transformation()->getTOWGS84Parameters(true);
+    auto expected = std::vector<double>{-106.8686, 52.2978, -103.7239, 0.3366,
+                                        -0.457,    1.8422,  -1.2747};
     ASSERT_EQ(params.size(), expected.size());
     for (int i = 0; i < 7; i++) {
         EXPECT_NEAR(params[i], expected[i], 1e-10);
@@ -7037,7 +7111,7 @@ static const struct {
          {"Longitude of 1st point", 6},
          {"Latitude of 2nd point", 4},
          {"Longitude of 2nd point", 7},
-         {"Scale factor on initial line", 5},
+         {"Scale factor at projection centre", 5},
          {"Easting at projection centre", 1},
          {"Northing at projection centre", 2},
      }},
@@ -7222,9 +7296,9 @@ static const struct {
      {
          {"Latitude of projection centre", 6},
          {"Longitude of projection centre", 5},
-         {"Azimuth of initial line", 4},
+         {"Azimuth at projection centre", 4},
          {"Angle from Rectified to Skew Grid", 4},
-         {"Scale factor on initial line", 3},
+         {"Scale factor at projection centre", 3},
          {"False easting", 1},
          {"False northing", 2},
      }},
@@ -7240,9 +7314,9 @@ static const struct {
      {
          {"Latitude of projection centre", 6},
          {"Longitude of projection centre", 5},
-         {"Azimuth of initial line", 4},
+         {"Azimuth at projection centre", 4},
          {"Angle from Rectified to Skew Grid", 4},
-         {"Scale factor on initial line", 3},
+         {"Scale factor at projection centre", 3},
          {"Easting at projection centre", 1},
          {"Northing at projection centre", 2},
      }},
@@ -7335,34 +7409,18 @@ static const struct {
     {"Local",
      {{"False_Easting", 1},
       {"False_Northing", 2},
-      {"Scale_Factor", 1},
-      {"Azimuth", 0},
+      {"Scale_Factor", 1.25},
+      {"Azimuth", 15},
       {"Longitude_Of_Center", 3},
       {"Latitude_Of_Center", 4}},
-     "Orthographic",
+     "Local Orthographic",
      {
-         {"Latitude of natural origin", 4},
-         {"Longitude of natural origin", 3},
-         {"False easting", 1},
-         {"False northing", 2},
-     }},
-
-    // Local with unsupported value for Azimuth
-    {"Local",
-     {{"False_Easting", 1},
-      {"False_Northing", 2},
-      {"Scale_Factor", 1},
-      {"Azimuth", 123},
-      {"Longitude_Of_Center", 3},
-      {"Latitude_Of_Center", 4}},
-     "Local",
-     {
-         {"False_Easting", 1},
-         {"False_Northing", 2},
-         {"Scale_Factor", 1},
-         {"Azimuth", 123},
-         {"Longitude_Of_Center", 3},
-         {"Latitude_Of_Center", 4},
+         {"Latitude of projection centre", 4},
+         {"Longitude of projection centre", 3},
+         {"Azimuth at projection centre", 15},
+         {"Scale factor at projection centre", 1.25},
+         {"Easting at projection centre", 1},
+         {"Northing at projection centre", 2},
      }},
 
     {"Winkel_Tripel",
@@ -7449,9 +7507,9 @@ static const struct {
      {
          {"Latitude of projection centre", 6},
          {"Longitude of projection centre", 5},
-         {"Azimuth of initial line", 4},
+         {"Azimuth at projection centre", 4},
          {"Angle from Rectified to Skew Grid", 7},
-         {"Scale factor on initial line", 3},
+         {"Scale factor at projection centre", 3},
          {"False easting", 1},
          {"False northing", 2},
      }},
@@ -7471,9 +7529,9 @@ static const struct {
      {
          {"Latitude of projection centre", 6},
          {"Longitude of projection centre", 5},
-         {"Azimuth of initial line", 4},
+         {"Azimuth at projection centre", 4},
          {"Angle from Rectified to Skew Grid", 7},
-         {"Scale factor on initial line", 3},
+         {"Scale factor at projection centre", 3},
          {"Easting at projection centre", 1},
          {"Northing at projection centre", 2},
      }},
@@ -7540,8 +7598,8 @@ static const struct {
      {
          {"Latitude of projection centre", 6},
          {"Longitude of projection centre", 5},
-         {"Azimuth of initial line", 4},
-         {"Scale factor on initial line", 3},
+         {"Azimuth at projection centre", 4},
+         {"Scale factor at projection centre", 3},
          {"False easting", 1},
          {"False northing", 2},
      }},
@@ -8241,6 +8299,43 @@ TEST(wkt_parse, wkt1_oracle) {
     ASSERT_GE(res.size(), 1U);
     EXPECT_EQ(res.front().first->getEPSGCode(), 2154);
     EXPECT_EQ(res.front().second, 90);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(wkt_parse, wkt1_oracle_albers_conical_equal_area) {
+    // WKT from mdsys.cs_srs Oracle table:
+    // https://lists.osgeo.org/pipermail/qgis-user/2024-June/054599.html
+    auto wkt = "PROJCS[\"NAD83 / BC Albers\",GEOGCS[\"NAD83\","
+               "DATUM[\"North_American_Datum_1983\","
+               "SPHEROID[\"GRS 1980\",6378137,298.257222101,"
+               "AUTHORITY[\"EPSG\",\"7019\"]],AUTHORITY[\"EPSG\",\"6269\"]],"
+               "PRIMEM[\"Greenwich\",0],"
+               "UNIT[\"Decimal Degree\",0.0174532925199433]],"
+               "PROJECTION[\"Albers_Conical_Equal_Area\"],"
+               "PARAMETER[\"Latitude_Of_Origin\",45],"
+               "PARAMETER[\"Central_Meridian\",-126],"
+               "PARAMETER[\"Standard_Parallel_1\",50],"
+               "PARAMETER[\"Standard_Parallel_2\",58.5],"
+               "PARAMETER[\"False_Easting\",1000000],"
+               "PARAMETER[\"False_Northing\",0],"
+               "UNIT[\"Meter\",1],"
+               "AXIS[\"Easting\",EAST],"
+               "AXIS[\"Northing\",NORTH]]";
+
+    auto dbContext = DatabaseContext::create();
+    auto obj = WKTParser().attachDatabaseContext(dbContext).createFromWKT(wkt);
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+
+    EXPECT_EQ(crs->derivingConversion()->method()->nameStr(),
+              "Albers Equal Area");
+
+    auto factoryAll = AuthorityFactory::create(dbContext, std::string());
+    auto res = crs->identify(factoryAll);
+    ASSERT_GE(res.size(), 1U);
+    EXPECT_EQ(res.front().first->getEPSGCode(), 3005);
+    EXPECT_EQ(res.front().second, 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -10933,6 +11028,31 @@ TEST(io, projparse_longlat_towgs84_7_terms) {
 
 // ---------------------------------------------------------------------------
 
+TEST(io, projparse_longlat_towgs84_7_terms_autocorrect) {
+    // Auto-correct wrong sign for rotation terms
+    // Cf https://github.com/OSGeo/PROJ/issues/4170
+    auto dbContext = DatabaseContext::create();
+    auto obj = createFromUserInput(
+        "+proj=lcc +lat_0=90 +lon_0=4.36748666666667 +lat_1=51.1666672333333 "
+        "+lat_2=49.8333339 +x_0=150000.013 +y_0=5400088.438 +ellps=intl "
+        "+towgs84=-106.8686,52.2978,-103.7239,-0.3366,0.457,-1.8422,-1.2747 "
+        "+units=m +no_defs +type=crs",
+        dbContext, true);
+    auto crs = nn_dynamic_pointer_cast<BoundCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+
+    EXPECT_EQ(
+        crs->exportToPROJString(
+            PROJStringFormatter::create(PROJStringFormatter::Convention::PROJ_4)
+                .get()),
+        "+proj=lcc +lat_0=90 +lon_0=4.36748666666667 +lat_1=51.1666672333333 "
+        "+lat_2=49.8333339 +x_0=150000.013 +y_0=5400088.438 +ellps=intl "
+        "+towgs84=-106.8686,52.2978,-103.7239,0.3366,-0.457,1.8422,-1.2747 "
+        "+units=m +no_defs +type=crs");
+}
+
+// ---------------------------------------------------------------------------
+
 TEST(io, projparse_longlat_nadgrids) {
     auto obj = PROJStringParser().createFromPROJString(
         "+proj=longlat +ellps=GRS80 +nadgrids=foo.gsb +type=crs");
@@ -11552,7 +11672,7 @@ TEST(io, projparse_omerc_nouoff) {
     EXPECT_TRUE(wkt.find("METHOD[\"Hotine Oblique Mercator (variant "
                          "A)\",ID[\"EPSG\",9812]]") != std::string::npos)
         << wkt;
-    EXPECT_TRUE(wkt.find("PARAMETER[\"Azimuth of initial line\",2") !=
+    EXPECT_TRUE(wkt.find("PARAMETER[\"Azimuth at projection centre\",2") !=
                 std::string::npos)
         << wkt;
     EXPECT_TRUE(wkt.find("PARAMETER[\"Angle from Rectified to Skew Grid\",3") !=
@@ -11620,10 +11740,11 @@ TEST(io, projparse_somerc) {
     EXPECT_TRUE(wkt.find("\"Longitude of projection centre\",2") !=
                 std::string::npos)
         << wkt;
-    EXPECT_TRUE(wkt.find("\"Scale factor on initial line\",3") !=
+    EXPECT_TRUE(wkt.find("\"Scale factor at projection centre\",3") !=
                 std::string::npos)
         << wkt;
-    EXPECT_TRUE(wkt.find("\"Azimuth of initial line\",90") != std::string::npos)
+    EXPECT_TRUE(wkt.find("\"Azimuth at projection centre\",90") !=
+                std::string::npos)
         << wkt;
     EXPECT_TRUE(wkt.find("\"Angle from Rectified to Skew Grid\",90") !=
                 std::string::npos)
@@ -12229,6 +12350,40 @@ TEST(io, projparse_ortho_ellipsoidal) {
     ASSERT_TRUE(crs != nullptr);
     EXPECT_EQ(crs->derivingConversion()->method()->getEPSGCode(),
               EPSG_CODE_METHOD_ORTHOGRAPHIC);
+    EXPECT_EQ(
+        crs->exportToPROJString(
+            PROJStringFormatter::create(PROJStringFormatter::Convention::PROJ_4)
+                .get()),
+        input);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projparse_ortho_with_alpha) {
+    std::string input("+proj=ortho +lat_0=0 +lon_0=0 +alpha=12 +k=1 +x_0=0 "
+                      "+y_0=0 +ellps=WGS84 +units=m +no_defs +type=crs");
+    auto obj = PROJStringParser().createFromPROJString(input);
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+    EXPECT_EQ(crs->derivingConversion()->method()->getEPSGCode(),
+              EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC);
+    EXPECT_EQ(
+        crs->exportToPROJString(
+            PROJStringFormatter::create(PROJStringFormatter::Convention::PROJ_4)
+                .get()),
+        input);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(io, projparse_ortho_with_scale) {
+    std::string input("+proj=ortho +lat_0=0 +lon_0=0 +alpha=0 +k=0.9 +x_0=0 "
+                      "+y_0=0 +ellps=WGS84 +units=m +no_defs +type=crs");
+    auto obj = PROJStringParser().createFromPROJString(input);
+    auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
+    ASSERT_TRUE(crs != nullptr);
+    EXPECT_EQ(crs->derivingConversion()->method()->getEPSGCode(),
+              EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC);
     EXPECT_EQ(
         crs->exportToPROJString(
             PROJStringFormatter::create(PROJStringFormatter::Convention::PROJ_4)
@@ -14900,6 +15055,87 @@ TEST(json_import, projected_crs) {
     ASSERT_TRUE(pcrs != nullptr);
     EXPECT_EQ(pcrs->exportToJSON(&(JSONFormatter::create()->setSchema("foo"))),
               json);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(json_import, conversion_utm_zone_south_wrong_id) {
+
+    auto json = "{\n"
+                "  \"type\": \"Conversion\",\n"
+                "  \"name\": \"UTM zone 55S\",\n"
+                "  \"method\": {\n"
+                "    \"name\": \"Transverse Mercator\",\n"
+                "    \"id\": {\n"
+                "      \"authority\": \"EPSG\",\n"
+                "      \"code\": 9807\n"
+                "    }\n"
+                "  },\n"
+                "  \"parameters\": [\n"
+                "    {\n"
+                "      \"name\": \"Latitude of natural origin\",\n"
+                "      \"value\": 0,\n"
+                "      \"unit\": {\n"
+                "        \"type\": \"AngularUnit\",\n"
+                "        \"name\": \"Degree\",\n"
+                "        \"conversion_factor\": 0.0174532925199433\n"
+                "      },\n"
+                "      \"id\": {\n"
+                "        \"authority\": \"EPSG\",\n"
+                "        \"code\": 8801\n"
+                "      }\n"
+                "    },\n"
+                "    {\n"
+                "      \"name\": \"Longitude of natural origin\",\n"
+                "      \"value\": 147,\n"
+                "      \"unit\": {\n"
+                "        \"type\": \"AngularUnit\",\n"
+                "        \"name\": \"Degree\",\n"
+                "        \"conversion_factor\": 0.0174532925199433\n"
+                "      },\n"
+                "      \"id\": {\n"
+                "        \"authority\": \"EPSG\",\n"
+                "        \"code\": 8802\n"
+                "      }\n"
+                "    },\n"
+                "    {\n"
+                "      \"name\": \"Scale factor at natural origin\",\n"
+                "      \"value\": 0.9996,\n"
+                "      \"unit\": \"unity\",\n"
+                "      \"id\": {\n"
+                "        \"authority\": \"EPSG\",\n"
+                "        \"code\": 8805\n"
+                "      }\n"
+                "    },\n"
+                "    {\n"
+                "      \"name\": \"False easting\",\n"
+                "      \"value\": 500000,\n"
+                "      \"unit\": \"metre\",\n"
+                "      \"id\": {\n"
+                "        \"authority\": \"EPSG\",\n"
+                "        \"code\": 8806\n"
+                "      }\n"
+                "    },\n"
+                "    {\n"
+                "      \"name\": \"False northing\",\n"
+                "      \"value\": 10000000,\n"
+                "      \"unit\": \"metre\",\n"
+                "      \"id\": {\n"
+                "        \"authority\": \"EPSG\",\n"
+                "        \"code\": 8807\n"
+                "      }\n"
+                "    }\n"
+                "  ],\n"
+                "  \"id\": {\n"
+                "    \"authority\": \"EPSG\",\n"
+                "    \"code\": 17055\n" // wrong code
+                "  }\n"
+                "}";
+
+    auto obj = createFromUserInput(json, nullptr);
+    auto conv = nn_dynamic_pointer_cast<Conversion>(obj);
+    ASSERT_TRUE(conv != nullptr);
+    EXPECT_EQ(conv->getEPSGCode(), 16155); // code fixed on import
 }
 
 // ---------------------------------------------------------------------------

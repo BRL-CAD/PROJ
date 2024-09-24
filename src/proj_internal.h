@@ -950,8 +950,6 @@ void pj_load_ini(PJ_CONTEXT *ctx);
 std::string PROJ_DLL pj_context_get_grid_cache_filename(PJ_CONTEXT *ctx);
 
 // For use by projsync
-void PROJ_DLL pj_context_set_user_writable_directory(PJ_CONTEXT *ctx,
-                                                     const std::string &path);
 std::string PROJ_DLL pj_get_relative_share_proj(PJ_CONTEXT *ctx);
 
 std::vector<PJCoordOperation>
@@ -1007,7 +1005,7 @@ PJ_LPZ pj_inv3d(PJ_XYZ, PJ *);
 
 void pj_clear_initcache(void);
 void PROJ_DLL pj_pr_list(PJ *); /* used by proj.cpp */
-char *pj_get_def(PJ *, int);
+char *pj_get_def(const PJ *, int);
 int pj_has_inverse(PJ *);
 
 char *pj_strdup(const char *str);

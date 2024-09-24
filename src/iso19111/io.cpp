@@ -1266,6 +1266,7 @@ struct WKTParser::Private {
     bool strict_ = true;
     bool unsetIdentifiersIfIncompatibleDef_ = true;
     std::list<std::string> warningList_{};
+    std::list<std::string> grammarErrorList_{};
     std::vector<double> toWGS84Parameters_{};
     std::string datumPROJ4Grids_{};
     bool esriStyle_ = false;
@@ -1273,28 +1274,23 @@ struct WKTParser::Private {
     DatabaseContextPtr dbContext_{};
     crs::GeographicCRSPtr geogCRSOfCompoundCRS_{};
 
-    static constexpr int MAX_PROPERTY_SIZE = 1024;
-    PropertyMap **properties_{};
-    int propertyCount_ = 0;
+    static constexpr unsigned int MAX_PROPERTY_SIZE = 1024;
+    std::vector<std::unique_ptr<PropertyMap>> properties_{};
 
-    Private() { properties_ = new PropertyMap *[MAX_PROPERTY_SIZE]; }
-
-    ~Private() {
-        for (int i = 0; i < propertyCount_; i++) {
-            delete properties_[i];
-        }
-        delete[] properties_;
-    }
+    Private() = default;
+    ~Private() = default;
     Private(const Private &) = delete;
     Private &operator=(const Private &) = delete;
 
-    void emitRecoverableWarning(const std::string &errorMsg);
+    void emitRecoverableWarning(const std::string &warningMsg);
+    void emitGrammarError(const std::string &errorMsg);
     void emitRecoverableMissingUNIT(const std::string &parentNodeName,
                                     const UnitOfMeasure &fallbackUnit);
 
     BaseObjectNNPtr build(const WKTNodeNNPtr &node);
 
-    IdentifierPtr buildId(const WKTNodeNNPtr &node, bool tolerant,
+    IdentifierPtr buildId(const WKTNodeNNPtr &parentNode,
+                          const WKTNodeNNPtr &node, bool tolerant,
                           bool removeInverseOf);
 
     PropertyMap &buildProperties(const WKTNodeNNPtr &node,
@@ -1517,6 +1513,20 @@ std::list<std::string> WKTParser::warningList() const {
 
 // ---------------------------------------------------------------------------
 
+/** \brief Return the list of grammar errors found during parsing.
+ *
+ * Grammar errors are non-compliance issues with respect to the WKT grammar.
+ *
+ * \note The list might be non-empty only is setStrict(false) has been called.
+ *
+ * @since PROJ 9.5
+ */
+std::list<std::string> WKTParser::grammarErrorList() const {
+    return d->grammarErrorList_;
+}
+
+// ---------------------------------------------------------------------------
+
 //! @cond Doxygen_Suppress
 void WKTParser::Private::emitRecoverableWarning(const std::string &errorMsg) {
     if (strict_) {
@@ -1525,6 +1535,19 @@ void WKTParser::Private::emitRecoverableWarning(const std::string &errorMsg) {
         warningList_.push_back(errorMsg);
     }
 }
+//! @endcond
+
+// ---------------------------------------------------------------------------
+
+//! @cond Doxygen_Suppress
+void WKTParser::Private::emitGrammarError(const std::string &errorMsg) {
+    if (strict_) {
+        throw ParsingException(errorMsg);
+    } else {
+        grammarErrorList_.push_back(errorMsg);
+    }
+}
+//! @endcond
 
 // ---------------------------------------------------------------------------
 
@@ -1570,6 +1593,7 @@ static ParsingException buildRethrow(const char *funcName,
 
 // ---------------------------------------------------------------------------
 
+//! @cond Doxygen_Suppress
 std::string WKTParser::Private::stripQuotes(const WKTNodeNNPtr &node) {
     return ::stripQuotes(node->GP()->value());
 }
@@ -1582,7 +1606,8 @@ double WKTParser::Private::asDouble(const WKTNodeNNPtr &node) {
 
 // ---------------------------------------------------------------------------
 
-IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &node,
+IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &parentNode,
+                                          const WKTNodeNNPtr &node,
                                           bool tolerant, bool removeInverseOf) {
     const auto *nodeP = node->GP();
     const auto &nodeChildren = nodeP->children();
@@ -1615,6 +1640,26 @@ IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &node,
         }
 
         auto code = stripQuotes(nodeChildren[1]);
+
+        // Prior to PROJ 9.5, when synthetizing an ID for a CONVERSION UTM Zone
+        // south, we generated a wrong value. Auto-fix that
+        const auto &parentNodeKeyword(parentNode->GP()->value());
+        if (parentNodeKeyword == WKTConstants::CONVERSION &&
+            codeSpace == Identifier::EPSG) {
+            const auto &parentNodeChildren = parentNode->GP()->children();
+            if (!parentNodeChildren.empty()) {
+                const auto parentNodeName(stripQuotes(parentNodeChildren[0]));
+                if (ci_starts_with(parentNodeName, "UTM Zone ") &&
+                    parentNodeName.find('S') != std::string::npos) {
+                    const int nZone =
+                        atoi(parentNodeName.c_str() + strlen("UTM Zone "));
+                    if (nZone >= 1 && nZone <= 60) {
+                        code = internal::toString(16100 + nZone);
+                    }
+                }
+            }
+        }
+
         auto &citationNode = nodeP->lookForChild(WKTConstants::CITATION);
         auto &uriNode = nodeP->lookForChild(WKTConstants::URI);
 
@@ -1656,12 +1701,11 @@ PropertyMap &WKTParser::Private::buildProperties(const WKTNodeNNPtr &node,
                                                  bool removeInverseOf,
                                                  bool hasName) {
 
-    if (propertyCount_ == MAX_PROPERTY_SIZE) {
+    if (properties_.size() >= MAX_PROPERTY_SIZE) {
         throw ParsingException("MAX_PROPERTY_SIZE reached");
     }
-    properties_[propertyCount_] = new PropertyMap();
-    auto &&properties = properties_[propertyCount_];
-    propertyCount_++;
+    properties_.push_back(internal::make_unique<PropertyMap>());
+    auto properties = properties_.back().get();
 
     std::string authNameFromAlias;
     std::string codeFromAlias;
@@ -1673,7 +1717,7 @@ PropertyMap &WKTParser::Private::buildProperties(const WKTNodeNNPtr &node,
         const auto &subNodeName(subNode->GP()->value());
         if (ci_equal(subNodeName, WKTConstants::ID) ||
             ci_equal(subNodeName, WKTConstants::AUTHORITY)) {
-            auto id = buildId(subNode, true, removeInverseOf);
+            auto id = buildId(node, subNode, true, removeInverseOf);
             if (id) {
                 identifiers->add(NN_NO_CHECK(id));
             }
@@ -2306,7 +2350,7 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                 auto &idNode = nodeP->lookForChild(WKTConstants::AUTHORITY);
                 if (!isNull(idNode)) {
                     try {
-                        auto id = buildId(idNode, false, false);
+                        auto id = buildId(node, idNode, false, false);
                         auto authFactory2 = AuthorityFactory::create(
                             NN_NO_CHECK(dbContext_), *id->codeSpace());
                         auto dbDatum =
@@ -2435,6 +2479,15 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                 for (const auto &child : TOWGS84Children) {
                     toWGS84Parameters_.push_back(asDouble(child));
                 }
+
+                if (TOWGS84Size == 7 && dbContext_) {
+                    dbContext_->toWGS84AutocorrectWrongValues(
+                        toWGS84Parameters_[0], toWGS84Parameters_[1],
+                        toWGS84Parameters_[2], toWGS84Parameters_[3],
+                        toWGS84Parameters_[4], toWGS84Parameters_[5],
+                        toWGS84Parameters_[6]);
+                }
+
                 for (size_t i = TOWGS84Size; i < 7; ++i) {
                     toWGS84Parameters_.push_back(0.0);
                 }
@@ -3186,7 +3239,7 @@ WKTParser::Private::buildGeodeticCRS(const WKTNodeNNPtr &node) {
             const auto &subNodeName(subNode->GP()->value());
             if (ci_equal(subNodeName, WKTConstants::ID) ||
                 ci_equal(subNodeName, WKTConstants::AUTHORITY)) {
-                auto id = buildId(subNode, true, false);
+                auto id = buildId(node, subNode, true, false);
                 if (id) {
                     try {
                         auto authFactory = AuthorityFactory::create(
@@ -4391,14 +4444,14 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
                 foundAngleRecifiedToSkewGrid = true;
             } else if (foundParameters[idx] &&
                        mapping->params[idx]->epsg_code ==
-                           EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) {
+                           EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) {
                 foundAzimuth = true;
             }
         }
         if (!foundAngleRecifiedToSkewGrid && foundAzimuth) {
             for (size_t idx = 0; idx < parameters.size(); ++idx) {
                 if (parameters[idx]->getEPSGCode() ==
-                    EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) {
+                    EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) {
                     PropertyMap propertiesParameter;
                     propertiesParameter.set(
                         Identifier::CODE_KEY,
@@ -4480,7 +4533,7 @@ WKTParser::Private::buildProjectedCRS(const WKTNodeNNPtr &node) {
                 auto &idNode = nodeP->lookForChild(WKTConstants::ID);
                 if (!isNull(idNode)) {
                     try {
-                        auto id = buildId(idNode, false, false);
+                        auto id = buildId(node, idNode, false, false);
                         auto authFactory = AuthorityFactory::create(
                             NN_NO_CHECK(dbContext_), *id->codeSpace());
                         auto projCRS =
@@ -5740,7 +5793,7 @@ BaseObjectNNPtr WKTParser::Private::build(const WKTNodeNNPtr &node) {
     if (ci_equal(name, WKTConstants::ID) ||
         ci_equal(name, WKTConstants::AUTHORITY)) {
         return util::nn_static_pointer_cast<BaseObject>(
-            NN_NO_CHECK(buildId(node, false, false)));
+            NN_NO_CHECK(buildId(node, node, false, false)));
     }
 
     if (ci_equal(name, WKTConstants::COORDINATEMETADATA)) {
@@ -5750,9 +5803,11 @@ BaseObjectNNPtr WKTParser::Private::build(const WKTNodeNNPtr &node) {
 
     throw ParsingException(concat("unhandled keyword: ", name));
 }
+//! @endcond
 
 // ---------------------------------------------------------------------------
 
+//! @cond Doxygen_Suppress
 class JSONParser {
     DatabaseContextPtr dbContext_{};
     std::string deformationModelName_{};
@@ -5768,7 +5823,8 @@ class JSONParser {
     static Length getLength(const json &j, const char *key);
     static Measure getMeasure(const json &j);
 
-    IdentifierNNPtr buildId(const json &j, bool removeInverseOf);
+    IdentifierNNPtr buildId(const json &parentJ, const json &j,
+                            bool removeInverseOf);
     static ObjectDomainPtr buildObjectDomain(const json &j);
     PropertyMap buildProperties(const json &j, bool removeInverseOf = false,
                                 bool nameRequired = true);
@@ -6100,7 +6156,8 @@ ObjectDomainPtr JSONParser::buildObjectDomain(const json &j) {
 
 // ---------------------------------------------------------------------------
 
-IdentifierNNPtr JSONParser::buildId(const json &j, bool removeInverseOf) {
+IdentifierNNPtr JSONParser::buildId(const json &parentJ, const json &j,
+                                    bool removeInverseOf) {
 
     PropertyMap propertiesId;
     auto codeSpace(getString(j, "authority"));
@@ -6154,6 +6211,21 @@ IdentifierNNPtr JSONParser::buildId(const json &j, bool removeInverseOf) {
         throw ParsingException("Unexpected type for value of \"code\"");
     }
 
+    // Prior to PROJ 9.5, when synthetizing an ID for a CONVERSION UTM Zone
+    // south, we generated a wrong value. Auto-fix that
+    if (parentJ.contains("type") && getType(parentJ) == "Conversion" &&
+        codeSpace == Identifier::EPSG && parentJ.contains("name")) {
+        const auto parentNodeName(getName(parentJ));
+        if (ci_starts_with(parentNodeName, "UTM Zone ") &&
+            parentNodeName.find('S') != std::string::npos) {
+            const int nZone =
+                atoi(parentNodeName.c_str() + strlen("UTM Zone "));
+            if (nZone >= 1 && nZone <= 60) {
+                code = internal::toString(16100 + nZone);
+            }
+        }
+    }
+
     if (!version.empty()) {
         propertiesId.set(Identifier::VERSION_KEY, version);
     }
@@ -6192,13 +6264,13 @@ PropertyMap JSONParser::buildProperties(const json &j, bool removeInverseOf,
                 throw ParsingException(
                     "Unexpected type for value of \"ids\" child");
             }
-            identifiers->add(buildId(idJ, removeInverseOf));
+            identifiers->add(buildId(j, idJ, removeInverseOf));
         }
         map.set(IdentifiedObject::IDENTIFIERS_KEY, identifiers);
     } else if (j.contains("id")) {
         auto idJ = getObject(j, "id");
         auto identifiers = ArrayOfBaseObject::create();
-        identifiers->add(buildId(idJ, removeInverseOf));
+        identifiers->add(buildId(j, idJ, removeInverseOf));
         map.set(IdentifiedObject::IDENTIFIERS_KEY, identifiers);
     }
 
@@ -7151,7 +7223,11 @@ EllipsoidNNPtr JSONParser::buildEllipsoid(const json &j) {
     throw ParsingException("Missing semi_major_axis or radius");
 }
 
+//! @endcond
+
 // ---------------------------------------------------------------------------
+
+//! @cond Doxygen_Suppress
 
 // import a CRS encoded as OGC Best Practice document 11-135.
 
@@ -8211,13 +8287,13 @@ BaseObjectNNPtr WKTParser::createFromWKT(const std::string &wkt) {
         dialect == WKTGuessedDialect::WKT1_ESRI) {
         auto errorMsg = pj_wkt1_parse(wkt);
         if (!errorMsg.empty()) {
-            d->emitRecoverableWarning(errorMsg);
+            d->emitGrammarError(errorMsg);
         }
     } else if (dialect == WKTGuessedDialect::WKT2_2015 ||
                dialect == WKTGuessedDialect::WKT2_2019) {
         auto errorMsg = pj_wkt2_parse(wkt);
         if (!errorMsg.empty()) {
-            d->emitRecoverableWarning(errorMsg);
+            d->emitGrammarError(errorMsg);
         }
     }
 
@@ -10179,6 +10255,35 @@ std::set<std::string> PROJStringFormatter::getUsedGridNames() const {
 
 // ---------------------------------------------------------------------------
 
+bool PROJStringFormatter::requiresPerCoordinateInputTime() const {
+    for (const auto &step : d->steps_) {
+        if (step.name == "set" && !step.inverted) {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("v_4")) {
+                    return false;
+                }
+            }
+        } else if (step.name == "helmert") {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("t_epoch")) {
+                    return true;
+                }
+            }
+        } else if (step.name == "deformation") {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("t_epoch")) {
+                    return true;
+                }
+            }
+        } else if (step.name == "defmodel") {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+
 void PROJStringFormatter::setVDatumExtension(const std::string &filename,
                                              const std::string &geoidCRSValue) {
     d->vDatumExtension_ = filename;
@@ -11399,6 +11504,26 @@ PROJStringParser::Private::buildBoundOrCompoundCRSIfNeeded(int iStep,
                 throw ParsingException("Non numerical value in towgs84 clause");
             }
         }
+
+        if (towgs84Values.size() == 7 && dbContext_) {
+            if (dbContext_->toWGS84AutocorrectWrongValues(
+                    towgs84Values[0], towgs84Values[1], towgs84Values[2],
+                    towgs84Values[3], towgs84Values[4], towgs84Values[5],
+                    towgs84Values[6])) {
+                for (auto &pair : step.paramValues) {
+                    if (ci_equal(pair.key, "towgs84")) {
+                        pair.value.clear();
+                        for (int i = 0; i < 7; ++i) {
+                            if (i > 0)
+                                pair.value += ',';
+                            pair.value += internal::toString(towgs84Values[i]);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         crs = BoundCRS::createFromTOWGS84(crs, towgs84Values);
     }
 
@@ -11740,6 +11865,13 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
             } else {
                 axisType = AxisType::SOUTH_POLE;
             }
+        }
+    } else if (step.name == "ortho") {
+        const std::string &k = getParamValueK(step);
+        if ((!k.empty() && getNumericValue(k) != 1.0) ||
+            (hasParamValue(step, "alpha") &&
+             getNumericValue(getParamValue(step, "alpha")) != 0.0)) {
+            mapping = getMapping(EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC);
         }
     }
 

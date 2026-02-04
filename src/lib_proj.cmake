@@ -1,13 +1,5 @@
 message(STATUS "Configuring proj library:")
 
-##############################################
-### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
-##############################################
-
-# default config is shared
-option(BUILD_SHARED_LIBS
-  "Build PROJ library shared." ON)
-
 find_package(Threads QUIET)
 if(Threads_FOUND AND CMAKE_USE_PTHREADS_INIT)
   add_definitions(-DPROJ_HAS_PTHREADS)
@@ -28,6 +20,7 @@ print_variable(ENABLE_IPO)
 ##############################################
 
 set(SRC_LIBPROJ_PROJECTIONS
+  projections/airocean.cpp
   projections/aeqd.cpp
   projections/adams.cpp
   projections/gnom.cpp
@@ -140,6 +133,7 @@ set(SRC_LIBPROJ_PROJECTIONS
   projections/calcofi.cpp
   projections/eqearth.cpp
   projections/col_urban.cpp
+  projections/spilhaus.cpp
 )
 
 set(SRC_LIBPROJ_CONVERSIONS
@@ -186,6 +180,7 @@ set(SRC_LIBPROJ_ISO19111
   iso19111/operation/conversion.cpp
   iso19111/operation/esriparammappings.cpp
   iso19111/operation/oputils.cpp
+  iso19111/operation/parametervalue.cpp
   iso19111/operation/parammappings.cpp
   iso19111/operation/projbasedoperation.cpp
   iso19111/operation/singleoperation.cpp
@@ -194,44 +189,61 @@ set(SRC_LIBPROJ_ISO19111
 )
 
 set(SRC_LIBPROJ_CORE
-  4D_api.cpp
   aasincos.cpp
   adjlon.cpp
-  auth.cpp
+  area.cpp
+  coord_operation.cpp
+  coordinates.cpp
+  create.cpp
+  crs_to_crs.cpp
   ctx.cpp
   datum_set.cpp
   datums.cpp
   deriv.cpp
+  dist.cpp
   dmstor.cpp
   ell_set.cpp
   ellps.cpp
   factors.cpp
+  filemanager.hpp
+  filemanager.cpp
   fwd.cpp
   gauss.cpp
   generic_inverse.cpp
   geodesic.c
+  grids.hpp
+  grids.cpp
+  info.cpp
   init.cpp
   initcache.cpp
   internal.cpp
   inv.cpp
+  latitudes.cpp
   list.cpp
   log.cpp
   malloc.cpp
   mlfn.cpp
   msfn.cpp
   mutex.cpp
+  networkfilemanager.cpp
   param.cpp
   phi2.cpp
   pipeline.cpp
   pj_list.h
   pr_list.cpp
   proj_internal.h
+  proj_json_streaming_writer.hpp
+  proj_json_streaming_writer.cpp
   proj_mdist.cpp
-  qsfn.cpp
   release.cpp
   rtodms.cpp
   strerrno.cpp
   strtod.cpp
+  sqlite3_utils.hpp
+  sqlite3_utils.cpp
+  tracing.cpp
+  trans.cpp
+  trans_bounds.cpp
   tsfn.cpp
   units.cpp
   wkt1_generated_parser.c
@@ -245,16 +257,6 @@ set(SRC_LIBPROJ_CORE
   wkt_parser.cpp
   wkt_parser.hpp
   zpoly1.cpp
-  proj_json_streaming_writer.hpp
-  proj_json_streaming_writer.cpp
-  tracing.cpp
-  grids.hpp
-  grids.cpp
-  filemanager.hpp
-  filemanager.cpp
-  networkfilemanager.cpp
-  sqlite3_utils.hpp
-  sqlite3_utils.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/proj_config.h
 )
 
@@ -346,7 +348,7 @@ add_custom_target(check_wkt2_grammar_md5 ALL
                   COMMAND ${CMAKE_COMMAND}
                       "-DIN_FILE=wkt2_grammar.y"
                       "-DTARGET=generate_wkt2_parser"
-                      "-DEXPECTED_MD5SUM=94337ca471caf74688db939009652ddb"
+                      "-DEXPECTED_MD5SUM=0a58cbfb6abd2b23bbb9345e12773348"
                       -P "${CMAKE_CURRENT_SOURCE_DIR}/check_md5sum.cmake"
                   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/wkt2_grammar.y"
@@ -401,6 +403,106 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "Intel")
     PROPERTIES COMPILE_FLAGS ${FP_PRECISE})
 endif()
 
+if (EMBED_RESOURCE_FILES)
+  add_library(proj_resources OBJECT embedded_resources.c)
+  add_dependencies(proj_resources generate_proj_db)
+  option(PROJ_OBJECT_LIBRARIES_POSITION_INDEPENDENT_CODE "Set ON to produce -fPIC code" ${BUILD_SHARED_LIBS})
+  set_property(TARGET proj_resources PROPERTY POSITION_INDEPENDENT_CODE ${PROJ_OBJECT_LIBRARIES_POSITION_INDEPENDENT_CODE})
+  target_sources(proj PRIVATE $<TARGET_OBJECTS:proj_resources>)
+
+  if (NOT IS_SHARP_EMBED_AVAILABLE_RES)
+    set(EMBEDDED_PROJ_DB "file_embed/proj_db.c")
+    add_custom_command(
+        OUTPUT "${EMBEDDED_PROJ_DB}"
+        COMMAND ${CMAKE_COMMAND}
+        -DRUN_FILE_EMBED_GENERATE=1
+        "-DFILE_EMBED_GENERATE_PATH=${PROJECT_BINARY_DIR}/data/proj.db"
+        -P ${PROJECT_SOURCE_DIR}/cmake/FileEmbed.cmake
+        DEPENDS generate_proj_db "${PROJECT_BINARY_DIR}/data/proj.db"
+    )
+    target_sources(proj_resources PRIVATE "${EMBEDDED_PROJ_DB}")
+  else()
+    target_include_directories(proj_resources PRIVATE "${PROJECT_BINARY_DIR}/data")
+    set_source_files_properties(embedded_resources.c OBJECT_DEPENDS ${PROJECT_BINARY_DIR}/data/proj.db)
+    target_compile_definitions(proj_resources PRIVATE "PROJ_DB=\"${PROJECT_BINARY_DIR}/data/proj.db\"")
+    target_compile_definitions(proj_resources PRIVATE USE_SHARP_EMBED)
+    set_target_properties(proj_resources PROPERTIES C_STANDARD 23)
+  endif()
+endif()
+
+set(EMBED_RESOURCE_DIRECTORY "" CACHE PATH "Directory that contains .tif, .json or .pol files to embed into libproj")
+set(FILES_TO_EMBED)
+if (EMBED_RESOURCE_DIRECTORY)
+    if (NOT EMBED_RESOURCE_FILES)
+        message(FATAL_ERROR "EMBED_RESOURCE_FILES should be set to ON when EMBED_RESOURCE_DIRECTORY is set")
+    endif()
+
+    if (NOT IS_DIRECTORY ${EMBED_RESOURCE_DIRECTORY})
+        message(FATAL_ERROR "${EMBED_RESOURCE_DIRECTORY} is not a valid directory")
+    endif()
+
+    file(GLOB FILES_TO_EMBED "${EMBED_RESOURCE_DIRECTORY}/*.tif" "${EMBED_RESOURCE_DIRECTORY}/*.json"  "${EMBED_RESOURCE_DIRECTORY}/*.pol")
+    if (NOT FILES_TO_EMBED)
+        message(FATAL_ERROR "No .tif, .json or .pol files found in ${EMBED_RESOURCE_DIRECTORY}")
+    endif()
+endif()
+
+if (EMBED_RESOURCE_FILES)
+    list(APPEND FILES_TO_EMBED "../data/proj.ini")
+    foreach(FILE ${PROJ_DICTIONARY})
+        list(APPEND FILES_TO_EMBED "../data/${FILE}")
+    endforeach()
+endif()
+
+if (FILES_TO_EMBED)
+    set(EMBEDDED_RESOURCES_C_PROLOG_CONTENT "")
+    set(EMBEDDED_RESOURCES_C_CONTENT "")
+    string(APPEND EMBEDDED_RESOURCES_C_CONTENT
+        "const unsigned char *pj_get_embedded_resource(const char* filename, unsigned int *pnSize)\n"
+        "{\n")
+    foreach(FILE ${FILES_TO_EMBED})
+        get_filename_component(FILENAME ${FILE} NAME)
+        message(STATUS "Embedding ${FILENAME}")
+        set(C_IDENTIFIER_RESOURCE_NAME "${FILENAME}")
+        string(REPLACE "." "_" C_IDENTIFIER_RESOURCE_NAME "${C_IDENTIFIER_RESOURCE_NAME}")
+        string(REPLACE "-" "_" C_IDENTIFIER_RESOURCE_NAME "${C_IDENTIFIER_RESOURCE_NAME}")
+        set(C_FILENAME "file_embed/${C_IDENTIFIER_RESOURCE_NAME}.c")
+        add_custom_command(
+            OUTPUT "${C_FILENAME}"
+            COMMAND ${CMAKE_COMMAND}
+            -DRUN_FILE_EMBED_GENERATE=1
+            "-DFILE_EMBED_GENERATE_PATH=${FILE}"
+            -P ${PROJECT_SOURCE_DIR}/cmake/FileEmbed.cmake
+            DEPENDS "${FILE}"
+        )
+
+        string(APPEND EMBEDDED_RESOURCES_C_CONTENT
+               "    if (strcmp(filename, \"${FILENAME}\") == 0)\n"
+               "    {\n"
+               "        *pnSize = ${C_IDENTIFIER_RESOURCE_NAME}_size;\n"
+               "        return ${C_IDENTIFIER_RESOURCE_NAME}_data;\n"
+               "    }\n")
+
+        target_sources(proj_resources PRIVATE "${C_FILENAME}")
+
+        string(APPEND EMBEDDED_RESOURCES_C_PROLOG_CONTENT "extern const uint8_t ${C_IDENTIFIER_RESOURCE_NAME}_data[];\n")
+        string(APPEND EMBEDDED_RESOURCES_C_PROLOG_CONTENT "extern const unsigned ${C_IDENTIFIER_RESOURCE_NAME}_size;\n")
+    endforeach()
+    string(APPEND EMBEDDED_RESOURCES_C_CONTENT
+           "    *pnSize = 0;\n"
+           "    return NULL;\n"
+           "}\n")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/file_embed/embedded_resources.c" "${EMBEDDED_RESOURCES_C_PROLOG_CONTENT}\n${EMBEDDED_RESOURCES_C_CONTENT}")
+endif()
+
+if (EMBED_RESOURCE_FILES)
+    target_sources(proj PRIVATE memvfs.c)
+    target_compile_definitions(proj PRIVATE EMBED_RESOURCE_FILES)
+endif()
+if (USE_ONLY_EMBEDDED_RESOURCE_FILES)
+    target_compile_definitions(proj PRIVATE USE_ONLY_EMBEDDED_RESOURCE_FILES)
+endif()
+
 if(ENABLE_IPO)
   set_property(TARGET proj
     PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -418,7 +520,7 @@ if(WIN32)
     if(MINGW AND BUILD_SHARED_LIBS AND APPEND_SOVERSION)
         set(PROJ_OUTPUT_NAME "proj" CACHE STRING "Name of the PROJ library")
     else()
-        # Detect major version update if re-using a CMake build directory where the
+        # Detect major version update if reusing a CMake build directory where the
         # PROJ version major number has been updated in the meantime.
         math(EXPR PROJ_VERSION_MAJOR_MINUS_ONE "${PROJ_VERSION_MAJOR} - 1")
         if(DEFINED PROJ_OUTPUT_NAME AND PROJ_OUTPUT_NAME STREQUAL "proj_${PROJ_VERSION_MAJOR_MINUS_ONE}")

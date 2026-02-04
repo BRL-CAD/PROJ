@@ -10,7 +10,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5733', -- target CRS (DNN height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','dnn.gtx',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -32,7 +34,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5317', -- target CRS (FVR09 height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','fvr09.gtx',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -54,7 +58,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5613', -- target CRS (RH2000 height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','SWEN17_RH2000.gtx',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -76,7 +82,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','6695', -- target CRS (JDG2011 (vertical) height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','jp_gsi_gsigeo2011.tif',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -88,6 +96,29 @@ INSERT INTO "usage" VALUES(
     'EPSG','1024'  -- unknown
 );
 
+INSERT INTO "grid_transformation" VALUES(
+    'PROJ','EPSG_6667_TO_EPSG_6695_2024','JDG2011 to JGD2011 height (JPGEO2024)',
+    NULL,
+    'EPSG','9665','Geographic3D to GravityRelatedHeight (gtx)',
+    'EPSG','6667', -- source CRS (JDG2011)
+    'EPSG','6695', -- target CRS (JDG2011 (vertical) height)
+    0.03, -- accuracy. Documentation mentions 3cm. GSIGEO2011 geoid model has NULL.
+    'EPSG','8666','Geoid (height correction) model file','JPGEO2024.isg',
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
+
+INSERT INTO "usage" VALUES(
+    'PROJ',
+    'EPSG_6667_TO_EPSG_6695_2024_USAGE',
+    'grid_transformation',
+    'PROJ',
+    'EPSG_6667_TO_EPSG_6695_2024',
+    'EPSG','1129', -- area of use: Japan
+    'EPSG','1024'  -- unknown
+);
+
+
 -- Switzerland
 
 INSERT INTO "grid_transformation" VALUES(
@@ -98,7 +129,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5729', -- target CRS (LHN95 height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','chgeo2004_ETRS.agr',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -118,7 +151,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5728', -- target CRS (LN02 height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','chgeo2004_htrans_ETRS.agr',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',
@@ -140,7 +175,9 @@ INSERT INTO "grid_transformation" VALUES(
     'EPSG','5703', -- target CRS (NAVD88 height)
     NULL,
     'EPSG','8666','Geoid (height correction) model file','GGM10.txt',
-    NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,0);
 
 INSERT INTO "usage" VALUES(
     'PROJ',

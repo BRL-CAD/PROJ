@@ -68,6 +68,10 @@ cmake \
   ..
 make
 
+# Test adding non-official file to DB
+cp data/proj.db /tmp
+cat ../data/sql/transformations_czechia_extra.sql | sqlite3 /tmp/proj.db
+
 if [ "$(uname)" == "Linux" -a -f lib/libproj.so ]; then
 if objdump -TC "lib/libproj.so" | grep "elf64-x86-64">/dev/null; then
     echo "Checking exported symbols..."
@@ -81,7 +85,12 @@ ctest --output-on-failure
 make install
 # find /tmp/proj_shared_install_from_dist
 $TRAVIS_BUILD_DIR/test/postinstall/test_cmake.sh /tmp/proj_shared_install_from_dist shared
-$TRAVIS_BUILD_DIR/test/postinstall/test_autotools.sh /tmp/proj_shared_install_from_dist shared
+if [ "$BUILD_NAME" != "osx" ]; then
+    # Fail on osx Conda with "autom4te: error: need GNU m4 1.4 or later: /Users/runner/miniforge3/conda-bld/autoconf_1746873780934/_build_env/bin/m4"
+    $TRAVIS_BUILD_DIR/test/postinstall/test_autotools.sh /tmp/proj_shared_install_from_dist 
+else
+    echo "Skipping test_autotools.sh test for $BUILD_NAME"
+fi
 
 # Test install and uninstall targets with DESTDIR
 make install DESTDIR=/tmp/destdir
@@ -115,7 +124,12 @@ ctest --output-on-failure
 make install
 # find /tmp/proj_static_install_from_dist
 $TRAVIS_BUILD_DIR/test/postinstall/test_cmake.sh /tmp/proj_static_install_from_dist static PROJ_CONFIG
-$TRAVIS_BUILD_DIR/test/postinstall/test_autotools.sh /tmp/proj_static_install_from_dist static
+if [ "$BUILD_NAME" != "osx" ]; then
+    # Fail on osx Conda with "autom4te: error: need GNU m4 1.4 or later: /Users/runner/miniforge3/conda-bld/autoconf_1746873780934/_build_env/bin/m4"
+    $TRAVIS_BUILD_DIR/test/postinstall/test_autotools.sh /tmp/proj_static_install_from_dist static
+else
+    echo "Skipping test_autotools.sh test for $BUILD_NAME"
+fi
 
 # Re-run by unsetting CMAKE_INSTALL_INCLUDEDIR/CMAKE_INSTALL_LIBDIR/CMAKE_INSTALL_BINDIR
 # so that later test which involve renaming/moving the installation prefix work.

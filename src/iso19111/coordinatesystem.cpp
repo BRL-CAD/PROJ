@@ -84,13 +84,13 @@ struct Meridian::Private {
 // ---------------------------------------------------------------------------
 
 Meridian::Meridian(const common::Angle &longitudeIn)
-    : d(internal::make_unique<Private>(longitudeIn)) {}
+    : d(std::make_unique<Private>(longitudeIn)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 Meridian::Meridian(const Meridian &other)
-    : IdentifiedObject(other), d(internal::make_unique<Private>(*other.d)) {}
+    : IdentifiedObject(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -182,14 +182,13 @@ struct CoordinateSystemAxis::Private {
 
 // ---------------------------------------------------------------------------
 
-CoordinateSystemAxis::CoordinateSystemAxis()
-    : d(internal::make_unique<Private>()) {}
+CoordinateSystemAxis::CoordinateSystemAxis() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 CoordinateSystemAxis::CoordinateSystemAxis(const CoordinateSystemAxis &other)
-    : IdentifiedObject(other), d(internal::make_unique<Private>(*other.d)) {}
+    : IdentifiedObject(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -392,7 +391,8 @@ void CoordinateSystemAxis::_exportToWKT(io::WKTFormatter *formatter, int order,
     formatter->startNode(io::WKTConstants::AXIS, !identifiers().empty());
     const std::string &axisName = nameStr();
     const std::string &abbrev = abbreviation();
-    const std::string parenthesizedAbbrev = "(" + abbrev + ")";
+    std::string parenthesizedAbbrev =
+        std::string("(").append(abbrev).append(")");
     std::string dir = direction().toString();
     std::string axisDesignation;
 
@@ -437,14 +437,14 @@ void CoordinateSystemAxis::_exportToWKT(io::WKTFormatter *formatter, int order,
         if (direction() == AxisDirection::GEOCENTRIC_X ||
             direction() == AxisDirection::GEOCENTRIC_Y ||
             direction() == AxisDirection::GEOCENTRIC_Z) {
-            axisDesignation = parenthesizedAbbrev;
+            axisDesignation = std::move(parenthesizedAbbrev);
         }
         // For cartesian CS with Easting/Northing, export only the abbreviation
         else if ((order == 1 && axisName == AxisName::Easting &&
                   abbrev == AxisAbbreviation::E) ||
                  (order == 2 && axisName == AxisName::Northing &&
                   abbrev == AxisAbbreviation::N)) {
-            axisDesignation = parenthesizedAbbrev;
+            axisDesignation = std::move(parenthesizedAbbrev);
         }
     }
     formatter->addQuotedString(axisDesignation);
@@ -599,13 +599,13 @@ struct CoordinateSystem::Private {
 
 CoordinateSystem::CoordinateSystem(
     const std::vector<CoordinateSystemAxisNNPtr> &axisIn)
-    : d(internal::make_unique<Private>(axisIn)) {}
+    : d(std::make_unique<Private>(axisIn)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 CoordinateSystem::CoordinateSystem(const CoordinateSystem &other)
-    : IdentifiedObject(other), d(internal::make_unique<Private>(*other.d)) {}
+    : IdentifiedObject(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------

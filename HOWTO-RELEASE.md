@@ -55,15 +55,8 @@ Update `NEWS.md` with descriptions of the changes since the last release.
 Hopefully issues and pull requests that go into the new release have been
 properly tagged with the milestone for the current release.
 
-End the section by thanking the authors that contributed to the release. Get a
-sorted list of contributors in descending order of activity:
-
-```sh
-git shortlog -sn x.y.z..HEAD | tac | awk '{$1=""; print $0}'
-```
-
-where `x.y.z` is the tag of the previous release. You may need to edit the list
-slightly since not all authors has properly configured their names in git.
+`scripts/releasenotes.py` can be used to create a first draft of the release
+notes.
 
 *Commit the changes to master.*
 
@@ -149,11 +142,17 @@ Barring a successful promotion process we can proceed with the final release.
 
 See step 1.6 above. Do not rename the archives with RC postfixes.
 
-### 2.2 Update website
+
+### 2.2 Update the STABLE_BRANCH repository variable
+
+Go to https://github.com/OSGeo/PROJ/settings/variables/actions/STABLE_BRANCH
+and update the value to be x.y
+
+### 2.3 Update website
 
 - Add the release notes from `NEWS.md` to `docs/source/news.rst`
 
-  These vim substitutions are helpfull when converting NEWS.md to rst:
+  These vim substitutions are helpful when converting NEWS.md to rst:
 
 ```sh
 :s!(\#\(\d\{4}\))!(`\#\1 <https://github.com/OSGeo/PROJ/issues/\1>`_)!
@@ -165,7 +164,7 @@ See step 1.6 above. Do not rename the archives with RC postfixes.
 
 When pushed upstream the website will be update to the current version.
 
-### 2.3 Tag the release
+### 2.4 Tag the release
 
 Tag the release with:
 
@@ -174,13 +173,13 @@ git tag -a -m "Create tag x.y.z" x.y.z
 git push --tags
 ```
 
-### 2.4 Check the GitHub Zeonodo integration
+### 2.5 Check the GitHub Zeonodo integration
 
 Go to https://zenodo.org/account/settings/github/ and check that the OSGeo/PROJ
 repository is ON so that the creation of the GitHub release triggers the
 creation of a corresponding Zenodo record.
 
-### 2.5 Prepare the release on GitHub
+### 2.6 Prepare the release on GitHub
 
 When the new tag is pushed upstream GitHub picks up that a new release has been
 issued. Update the new release on <https://github.com/OSGeo/PROJ/releases> with
@@ -188,13 +187,13 @@ the release notes from `NEWS.md` and add the prepared source distribution archiv
 to the release (otherwise GitHub will just package the entire repository - we
 don't want that).
 
-### 2.6 Announce the new release
+### 2.7 Announce the new release
 
 The release should be announced on PROJ and MetaCRS mailing lists. Additionally
 the release announcement should be sent to <news_item@osgeo.org> which will add
 the announcement to osgeo.org and other OSGeo communication channels.
 
-Make some noise on Twitter and other relevant social media.
+Make some noise on relevant social media.
 
 ## 3 Post final release
 
@@ -228,9 +227,3 @@ versions. Versions are based on branch labels, e.g. "9.2". To modify settings,
 registered users must first log in. To add a version, go to
 <https://readthedocs.org/projects/osgeo-proj/versions/> and click "Activate"
 next to the maintenance branch label.
-
-Also update the redirect for `/* -> /en/X.Y/:splat` at
-<https://readthedocs.org/dashboard/osgeo-proj/redirects/>
-
-The latest maintenance branch should be set as the "Default version" found at
-<https://readthedocs.org/dashboard/osgeo-proj/advanced/>

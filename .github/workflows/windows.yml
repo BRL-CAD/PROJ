@@ -35,7 +35,7 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -71,12 +71,14 @@ jobs:
             cd %PROJ_BUILD%
             set PROJ_DIR=%GITHUB_WORKSPACE%\proj_dir
             :: Not directly linked to BUILD_SHARED_LIBS, but a way to test different C++ standard versions
-            if "${{ env.BUILD_SHARED_LIBS }}"=="ON" (set EXTRA_CXX_FLAGS="/std:c++20")
+            if "${{ env.BUILD_SHARED_LIBS }}"=="ON" (set CMAKE_CXX_STANDARD="-DCMAKE_CXX_STANDARD=20")
             if "${{ env.BUILD_TYPE }}"=="Release" (set CMAKE_UNITY_BUILD_OPT="-DCMAKE_UNITY_BUILD=ON")
             cmake -D CMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" ^
               -D BUILD_SHARED_LIBS="${{ env.BUILD_SHARED_LIBS }}" ^
+              -D EXPORT_PDB="ON" ^
               -D CMAKE_C_FLAGS="/WX" ^
-              -D CMAKE_CXX_FLAGS="/WX %EXTRA_CXX_FLAGS%" ^
+              -D CMAKE_CXX_FLAGS="/WX" ^
+              %CMAKE_CXX_STANDARD% ^
               -D CMAKE_TOOLCHAIN_FILE=c:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
               -D CMAKE_INSTALL_PREFIX="%PROJ_DIR%" ^
               -D PROJ_DB_CACHE_DIR=%PROJ_DB_CACHE_DIR% ^
@@ -133,7 +135,7 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cache
         uses: actions/cache@v4
@@ -157,7 +159,7 @@ jobs:
             mingw-w64-x86_64-python-yaml
             mingw-w64-x86_64-sqlite3
 
-      - name: Build
+      - name: First build with EMBED_RESOURCE_FILES=ON and USE_ONLY_EMBEDDED_RESOURCE_FILES=ON
         run: |
             mkdir -p $HOME/.ccache
             ccache -M 500M
@@ -165,6 +167,27 @@ jobs:
             PROJ_BUILD=${GITHUB_WORKSPACE}/build
             PROJ_DIR=${GITHUB_WORKSPACE}/proj_dir
             mkdir ${PROJ_BUILD}
+            cd ${PROJ_BUILD}
+
+            cmake -D CMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+              -D BUILD_SHARED_LIBS=${{ env.BUILD_SHARED_LIBS }} \
+              -D CMAKE_INSTALL_PREFIX="${PROJ_DIR}" \
+              -D CMAKE_C_FLAGS="-Werror" \
+              -D CMAKE_CXX_FLAGS="-Werror" \
+              -D USE_CCACHE=ON \
+              -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
+              -D CMAKE_UNITY_BUILD=ON \
+              -D Python_ROOT_DIR=/mingw64 \
+              -D CMAKE_CXX_STANDARD=20 \
+              -D EMBED_RESOURCE_FILES=ON \
+              -D USE_ONLY_EMBEDDED_RESOURCE_FILES=ON \
+              ..
+            make -j 2
+
+      - name: Seond build with EMBED_RESOURCE_FILES=OFF and USE_ONLY_EMBEDDED_RESOURCE_FILES=OFF
+        run: |
+            PROJ_BUILD=${GITHUB_WORKSPACE}/build
+            PROJ_DIR=${GITHUB_WORKSPACE}/proj_dir
             cd ${PROJ_BUILD}
             cmake -D CMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
               -D BUILD_SHARED_LIBS=${{ env.BUILD_SHARED_LIBS }} \
@@ -175,6 +198,9 @@ jobs:
               -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
               -D CMAKE_UNITY_BUILD=ON \
               -D Python_ROOT_DIR=/mingw64 \
+              -D CMAKE_CXX_STANDARD=20 \
+              -D EMBED_RESOURCE_FILES=OFF \
+              -D USE_ONLY_EMBEDDED_RESOURCE_FILES=OFF \
               ..
             make -j 2
             make install
@@ -191,5 +217,6 @@ jobs:
             BUILD_MODE=shared
             if [ ${{ env.BUILD_SHARED_LIBS }} == "OFF" ]; then BUILD_MODE=static; fi
             ../test/postinstall/test_cmake.sh ${PROJ_DIR} ${BUILD_MODE}
-            ../test/postinstall/test_pkg-config.sh ${PROJ_DIR} ${BUILD_MODE}
+            # Disabled because of issue with (likely sqlite3.pc) that includes a unexisting -ldl
+            # ../test/postinstall/test_pkg-config.sh ${PROJ_DIR} ${BUILD_MODE}
             proj

@@ -40,12 +40,12 @@ Transverse Mercator.
   The projection center is determined from the UTM zone and can be
   determined by zone*6 - 183
 
-.. hint:: Tranverse Mercator parameters are documented at :ref:`tmerc`
+.. hint:: Transverse Mercator parameters are documented at :ref:`tmerc`
 
 .. literalinclude:: projections3.gie
   :lines: 60-64
 
-Exercise 3: The less accurate, but faster, version of the Tranverse Mercator
+Exercise 3: The less accurate, but faster, version of the Transverse Mercator
 -----------------------------------------------------------------------------
 
 As mentioned in the introduction to this set of exercises, two versions of the
@@ -84,7 +84,7 @@ consider in which situation use of each of the algorithms is  appropriate.
 Exercise 3a
 ===========
 
-As a baseline, determine the roundtrip accuracy of the default algorirthm
+As a baseline, determine the roundtrip accuracy of the default algorithm
 using UTM zone 22.
 
 .. literalinclude:: projections3.gie

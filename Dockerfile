@@ -1,7 +1,7 @@
 ##
 # OSGeo/PROJ
 
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:24.04 AS builder
 
 LABEL maintainer="Howard Butler <howard@hobu.co>"
 
@@ -13,7 +13,7 @@ RUN apt-get update \
         software-properties-common build-essential ca-certificates \
         cmake wget unzip \
         zlib1g-dev libsqlite3-dev sqlite3 libcurl4-gnutls-dev \
-        libtiff5-dev \
+        libtiff-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY . /PROJ
@@ -23,13 +23,13 @@ RUN cmake --build _build -j $(nproc)
 RUN cmake --install _build
 RUN rm -rfv _build
 
-FROM ubuntu:22.04 AS runner
+FROM ubuntu:24.04 AS runner
 
 RUN date
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        libsqlite3-0 libtiff5 libcurl4 libcurl3-gnutls \
+        libsqlite3-0 libtiff6 libcurl4 libcurl3-gnutls \
         wget ca-certificates \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

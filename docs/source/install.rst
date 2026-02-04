@@ -146,7 +146,7 @@ Build requirements
 ++++++++++++++++++
 
 - C99 compiler
-- C++11 compiler
+- C++17 compiler
 - CMake >= 3.16
 - SQLite3 >= 3.11: headers and library for target architecture, and sqlite3 executable for build architecture
 - libtiff >= 4.0 (optional but recommended)
@@ -160,7 +160,7 @@ Test requirements
 
 These are only required if testing is built (see :option:`BUILD_TESTING`, default ON)
 
-- GoogleTest (GTest) >= 1.8.1; if not found and :option:`TESTING_USE_NETWORK` is ON, then version 1.12.1 is fetched from GitHub and locally installed
+- GoogleTest (GTest) >= 1.8.1; if not found and :option:`TESTING_USE_NETWORK` is ON, then version 1.15.2 is fetched from GitHub and locally installed
 - Python >= 3.7
 - `importlib_metadata <https://pypi.org/project/importlib-metadata/>`_ only needed for Python 3.7
 - One of either `PyYAML <https://pypi.org/project/PyYAML/>`_ or `ruamel.yaml <https://pypi.org/project/ruamel.yaml/>`_
@@ -445,6 +445,42 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
     .. versionadded:: 9.5
 
     Embed ``PROJ_DATA`` hard-coded alternative path for data files location. Disable to avoid setting this non-relocatable hard-coded path. Default ON.
+
+.. option:: EMBED_RESOURCE_FILES=ON/OFF
+
+    .. versionadded:: 9.6
+
+    When ON, :file:`proj.db`, :file:`proj.ini` and ITRF resource files will be
+    embedded into the PROJ library.
+    Default is OFF for shared library builds (BUILD_SHARED_LIBS=ON), and ON
+    for static library builds (BUILD_SHARED_LIBS=OFF).
+
+.. option:: EMBED_RESOURCE_DIRECTORY=<directory>
+
+    .. versionadded:: 9.6
+
+    Embed files from <directory> ending with .tif, .json or .pol in the PROJ library itself.
+
+    The pointed directory can potentially be the full PROJ-data package (uncompressed).
+    In that case, about 6 GB of free disk and 16 GB of RAM are required to build PROJ.
+
+    When using this parameter, EMBED_RESOURCE_FILES must be set to ON.
+
+    If the content of the directory changes, you need to run CMake again to
+    update the list of files.
+
+.. option:: USE_ONLY_EMBEDDED_RESOURCE_FILES=ON/OFF
+
+    .. versionadded:: 9.6
+
+    Even if EMBED_RESOURCE_FILES=ON, by default PROJ will still try to locate
+    :file:`proj.db`, :file:`proj.ini`, ITRF resource files or grid files on the
+    file system, and fallback to the embedded version if not found.
+    By setting USE_ONLY_EMBEDDED_RESOURCE_FILES=ON, no attempt at locating
+    those files on the file system is made.
+    Default is OFF.
+    Users will also typically want to set EMBED_PROJ_DATA_PATH=OFF if setting
+    USE_ONLY_EMBEDDED_RESOURCE_FILES=OFF.
 
 
 Building on Windows with vcpkg and Visual Studio 2017 or 2019

@@ -183,7 +183,7 @@ Conversion::alterParametersLinearUnit(const common::UnitOfMeasure &unit,
  * @param methodIn the operation method.
  * @param values the values.
  * @return a new Conversion.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 ConversionNNPtr Conversion::create(const util::PropertyMap &properties,
                                    const OperationMethodNNPtr &methodIn,
@@ -212,7 +212,7 @@ ConversionNNPtr Conversion::create(const util::PropertyMap &properties,
  * @param values the operation values. Constraint:
  * values.size() == parameters.size()
  * @return a new Conversion.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 ConversionNNPtr Conversion::create(
     const util::PropertyMap &propertiesConversion,
@@ -276,8 +276,7 @@ createConversion(const util::PropertyMap &properties,
                      metadata::Identifier::EPSG)
                 .set(metadata::Identifier::CODE_KEY, param->epsg_code);
         }
-        auto parameter = OperationParameter::create(paramProperties);
-        parameters.push_back(parameter);
+        parameters.push_back(OperationParameter::create(paramProperties));
     }
 
     auto methodProperties = util::PropertyMap().set(
@@ -2624,7 +2623,7 @@ Conversion::createGeographicGeocentric(const crs::CRSNNPtr &sourceCRS,
 /** \brief Instantiate a conversion between a GeographicCRS and a spherical
  * planetocentric GeodeticCRS
  *
- * This method peforms conversion between geodetic latitude and geocentric
+ * This method performs conversion between geodetic latitude and geocentric
  * latitude
  *
  * @return a new Conversion.
@@ -2713,9 +2712,11 @@ CoordinateOperationNNPtr Conversion::inverse() const {
         if (convFactor == 0) {
             throw InvalidOperation("Invalid conversion factor");
         }
+        // coverity[divide_by_zero]
+        const double invConvFactor = 1.0 / convFactor;
         auto conv = createChangeVerticalUnit(
             createPropertiesForInverse(this, false, false),
-            common::Scale(1.0 / convFactor));
+            common::Scale(invConvFactor));
         conv->setCRSs(this, true);
         return conv;
     }
@@ -2880,6 +2881,7 @@ ConversionPtr Conversion::convertToOtherMethod(int targetEPSGCode) const {
             EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN);
         if (!(k0 > 0 && k0 <= 1.0 + 1e-10))
             return nullptr;
+        // coverity[divide_by_zero]
         const double dfStdP1Lat =
             (k0 >= 1.0)
                 ? 0.0
@@ -3206,6 +3208,16 @@ static void getESRIMethodNameAndParams(const Conversion *conv,
             } else {
                 esriMethodName = "Stereographic_South_Pole";
             }
+        } else if (esriMapping->epsg_code ==
+                   EPSG_CODE_METHOD_LAMBERT_CYLINDRICAL_EQUAL_AREA) {
+            if (std::abs(conv->parameterValueNumeric(
+                             EPSG_CODE_PARAMETER_LATITUDE_1ST_STD_PARALLEL,
+                             common::UnitOfMeasure::DEGREE) -
+                         30.0) < 1e-10) {
+                esriMethodName = "Behrmann";
+            } else {
+                esriMethodName = "Cylindrical_Equal_Area";
+            }
         }
     }
 }
@@ -3247,8 +3259,8 @@ const char *Conversion::getWKT1GDALMethodName() const {
 
 void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
     const auto &l_method = method();
-    const auto &methodName = l_method->nameStr();
-    const auto methodEPSGCode = l_method->getEPSGCode();
+    std::string methodName = l_method->nameStr();
+    auto methodEPSGCode = l_method->getEPSGCode();
     const bool isWKT2 = formatter->version() == io::WKTFormatter::Version::WKT2;
 
     if (!isWKT2 && formatter->useESRIDialect()) {
@@ -3286,6 +3298,29 @@ void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
 #endif
 
     bool bAlreadyWritten = false;
+
+    bool methodWritten = false;
+
+    const MethodMapping *mapping = !isWKT2 && !formatter->useESRIDialect()
+                                       ? getMapping(l_method.get())
+                                       : nullptr;
+
+    if (!isWKT2 && methodEPSGCode == EPSG_CODE_METHOD_MERCATOR_SPHERICAL) {
+        auto projCRS =
+            dynamic_cast<const crs::ProjectedCRS *>(targetCRS().get());
+        if (projCRS && projCRS->baseCRS()->ellipsoid()->isSphere()) {
+            methodName = EPSG_NAME_METHOD_MERCATOR_VARIANT_A;
+            methodEPSGCode = EPSG_CODE_METHOD_MERCATOR_VARIANT_A;
+            if (!formatter->useESRIDialect()) {
+                methodWritten = true;
+                formatter->startNode(io::WKTConstants::PROJECTION, false);
+                formatter->addQuotedString("Mercator_1SP");
+                formatter->endNode();
+                mapping = getMapping(methodEPSGCode);
+            }
+        }
+    }
+
     if (!isWKT2 && formatter->useESRIDialect()) {
         const ESRIParamMapping *esriParams = nullptr;
         const char *esriMethodName = nullptr;
@@ -3392,10 +3427,18 @@ void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
     }
 
     if (!bAlreadyWritten) {
-        l_method->_exportToWKT(formatter);
+        if (!methodWritten) {
+            l_method->_exportToWKT(formatter);
+        }
 
-        const MethodMapping *mapping =
-            !isWKT2 ? getMapping(l_method.get()) : nullptr;
+        if (!isWKT2 && methodEPSGCode == EPSG_CODE_METHOD_MERCATOR_VARIANT_A &&
+            parameterValueNumericAsSI(
+                EPSG_CODE_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN) != 0.0) {
+            throw io::FormattingException(
+                std::string("Unsupported value for ") +
+                EPSG_NAME_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN);
+        }
+
         bool hasInterpolationCRSParameter = false;
         for (const auto &genOpParamvalue : parameterValues()) {
             const auto opParamvalue =
@@ -3879,6 +3922,8 @@ void Conversion::_exportToPROJString(
     bool bConversionDone = false;
     bool bEllipsoidParametersDone = false;
     bool useApprox = false;
+    bool insertAxisWSU = false;
+    bool negateScaleFactor = false;
     if (methodEPSGCode == EPSG_CODE_METHOD_TRANSVERSE_MERCATOR) {
         // Check for UTM
         int zone = 0;
@@ -3897,7 +3942,29 @@ void Conversion::_exportToPROJString(
             if (!north) {
                 formatter->addParam("south");
             }
+        } else if (l_targetCRS &&
+                   parameterValueNumeric(
+                       EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN,
+                       common::UnitOfMeasure::SCALE_UNITY) < 0 &&
+                   parameterValueNumeric(EPSG_CODE_PARAMETER_FALSE_EASTING,
+                                         common::UnitOfMeasure::METRE) == 0 &&
+                   parameterValueNumeric(EPSG_NAME_PARAMETER_FALSE_NORTHING,
+                                         common::UnitOfMeasure::METRE) == 0) {
+            // Deal with ESRI:102470 that use Transverse Mercator with k=-1
+            // to indicate a westing-southing coordinate system, by inserting a
+            // +axis=wsu and changing k to 1.
+            auto projCRS =
+                dynamic_cast<const crs::ProjectedCRS *>(l_targetCRS.get());
+            if (projCRS) {
+                const auto &axisList = projCRS->coordinateSystem()->axisList();
+                if (axisList[0]->direction() == cs::AxisDirection::EAST &&
+                    axisList[1]->direction() == cs::AxisDirection::NORTH) {
+                    insertAxisWSU = true;
+                    negateScaleFactor = true;
+                }
+            }
         }
+
     } else if (methodEPSGCode ==
                EPSG_CODE_METHOD_HOTINE_OBLIQUE_MERCATOR_VARIANT_A) {
         const double azimuth =
@@ -4093,10 +4160,12 @@ void Conversion::_exportToPROJString(
         // Look for ESRI method and parameter names (to be opposed
         // to the OGC WKT2 names we use elsewhere, because there's no mapping
         // of those parameters to OGC WKT2)
-        // We also reject non-default values for a number of parameters,
-        // because they are not implemented on PROJ side. The subset we
-        // support can handle ESRI:54098 WGS_1984_Adams_Square_II, but not
+        // We at least support ESRI:54098 WGS_1984_Adams_Square_II and
         // ESRI:54099 WGS_1984_Spilhaus_Ocean_Map_in_Square
+        // More generally, we think our implementation of +proj=spilhaus
+        // matches ESRI Adams_Square_II with just a sqrt(2) factor difference
+        // for the scale factor, with a ~20 cm difference (difference in
+        // ell_int_5() computation?)
         const double falseEasting = parameterValueNumeric(
             "False_Easting", common::UnitOfMeasure::METRE);
         const double falseNorthing = parameterValueNumeric(
@@ -4114,14 +4183,13 @@ void Conversion::_exportToPROJString(
             "Latitude_Of_Center", common::UnitOfMeasure::DEGREE);
         const double XYPlaneRotation = parameterValueNumeric(
             "XY_Plane_Rotation", common::UnitOfMeasure::DEGREE);
-        if (scaleFactor != 1.0 || azimuth != 0.0 || latitudeOfCenter != 0.0 ||
-            XYPlaneRotation != 0.0) {
-            throw io::FormattingException("Unsupported value for one or "
-                                          "several parameters of "
-                                          "Adams_Square_II");
-        }
-        formatter->addStep("adams_ws2");
+
+        formatter->addStep("spilhaus");
+        formatter->addParam("lat_0", latitudeOfCenter);
         formatter->addParam("lon_0", longitudeOfCenter);
+        formatter->addParam("azi", azimuth);
+        formatter->addParam("k_0", M_SQRT2 * scaleFactor);
+        formatter->addParam("rot", XYPlaneRotation);
         formatter->addParam("x_0", falseEasting);
         formatter->addParam("y_0", falseNorthing);
         bConversionDone = true;
@@ -4276,6 +4344,10 @@ void Conversion::_exportToPROJString(
                 }
             }
 
+            if (insertAxisWSU) {
+                formatter->addParam("axis", "wsu");
+            }
+
             if (mapping->epsg_code ==
                 EPSG_CODE_METHOD_POLAR_STEREOGRAPHIC_VARIANT_B) {
                 double latitudeStdParallel = parameterValueNumeric(
@@ -4323,6 +4395,11 @@ void Conversion::_exportToPROJString(
                     strcmp(param->proj_name, "lat_1") == 0) {
                     formatter->addParam(param->proj_name, valueConverted);
                     formatter->addParam("lat_0", valueConverted);
+                } else if (
+                    negateScaleFactor &&
+                    param->epsg_code ==
+                        EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN) {
+                    formatter->addParam(param->proj_name, -valueConverted);
                 } else {
                     formatter->addParam(param->proj_name, valueConverted);
                 }
@@ -4597,7 +4674,7 @@ ConversionNNPtr Conversion::createGeographic2DWithHeightOffsets(
         VectorOfParameters{
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LATITUDE_OFFSET),
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LONGITUDE_OFFSET),
-            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_UNDULATION)},
+            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_HEIGHT)},
         VectorOfValues{offsetLat, offsetLong, offsetHeight});
 }
 

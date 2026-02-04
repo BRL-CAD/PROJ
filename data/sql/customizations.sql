@@ -68,7 +68,7 @@ INSERT INTO "usage" VALUES(
     'EPSG','1024'  -- unknown
 );
 
-INSERT INTO "other_transformation" VALUES('PROJ','CRS84_TO_EPSG_4326','OGC:CRS84 to WGS 84',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS84','EPSG','4326',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+INSERT INTO "other_transformation" VALUES('PROJ','CRS84_TO_EPSG_4326','OGC:CRS84 to WGS 84',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS84','EPSG','4326',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
 INSERT INTO "usage" VALUES(
     'PROJ',
     'CRS84_TO_EPSG_4326_USAGE',
@@ -79,7 +79,7 @@ INSERT INTO "usage" VALUES(
     'EPSG','1024'  -- unknown
 );
 
-INSERT INTO "other_transformation" VALUES('PROJ','CRS27_TO_EPSG_4267','OGC:CRS27 to NAD27',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS27','EPSG','4267',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+INSERT INTO "other_transformation" VALUES('PROJ','CRS27_TO_EPSG_4267','OGC:CRS27 to NAD27',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS27','EPSG','4267',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
 INSERT INTO "usage" VALUES(
     'PROJ',
     'CRS27_TO_EPSG_4267_USAGE',
@@ -90,7 +90,7 @@ INSERT INTO "usage" VALUES(
     'EPSG','1024'  -- unknown
 );
 
-INSERT INTO "other_transformation" VALUES('PROJ','CRS83_TO_EPSG_4269','OGC:CRS83 to NAD83',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS83','EPSG','4269',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
+INSERT INTO "other_transformation" VALUES('PROJ','CRS83_TO_EPSG_4269','OGC:CRS83 to NAD83',NULL,'EPSG','9843','Axis Order Reversal (2D)','OGC','CRS83','EPSG','4269',0.0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
 INSERT INTO "usage" VALUES(
     'PROJ',
     'CRS83_TO_EPSG_4269_USAGE',
@@ -135,7 +135,7 @@ UPDATE grid_transformation SET interpolation_crs_auth_name = 'EPSG',
 
 -- EPSG:1312 'NAD27 to NAD83 (3)' / NTv1_0.gsb has a accuracy of 1m whereas
 -- EPSG:1313 'NAD27 to NAD83 (4)' / NTv2_0.gsb has a accuracy of 1.5m
--- so we will never select automatically NTv2_0.gsb. Worse the advertize
+-- so we will never select automatically NTv2_0.gsb. Worse the advertise
 -- accuracy of the NTv1 method
 
 UPDATE grid_transformation SET accuracy = 2.0 WHERE auth_name = 'EPSG' AND code = '1312';
@@ -170,6 +170,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     interpolation_crs_auth_name,
     interpolation_crs_code,
     operation_version,
@@ -210,6 +222,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -248,6 +272,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -286,6 +322,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -324,6 +372,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -362,6 +422,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -400,6 +472,18 @@ INSERT INTO grid_transformation SELECT
     grid2_param_code,
     grid2_param_name,
     grid2_name,
+    param1_auth_name,
+    param1_code,
+    param1_name,
+    param1_value,
+    param1_uom_auth_name,
+    param1_uom_code,
+    param2_auth_name,
+    param2_code,
+    param2_name,
+    param2_value,
+    param2_uom_auth_name,
+    param2_uom_code,
     'EPSG' AS interpolation_crs_auth_name,
     8255 AS interpolation_crs_code,
     operation_version,
@@ -554,6 +638,18 @@ SELECT
     gt.grid2_param_code,
     gt.grid2_param_name,
     gt.grid2_name,
+    gt.param1_auth_name,
+    gt.param1_code,
+    gt.param1_name,
+    gt.param1_value,
+    gt.param1_uom_auth_name,
+    gt.param1_uom_code,
+    gt.param2_auth_name,
+    gt.param2_code,
+    gt.param2_name,
+    gt.param2_value,
+    gt.param2_uom_auth_name,
+    gt.param2_uom_code,
     gt.interpolation_crs_auth_name,
     gt.interpolation_crs_code,
     gt.operation_version,
@@ -581,3 +677,63 @@ FROM grid_transformation gt
 JOIN usage u ON u.object_auth_name = gt.auth_name AND u.object_code = gt.code AND u.object_table_name = 'grid_transformation'
 WHERE method_auth_name = 'EPSG' AND method_name LIKE 'Geog3D to Geog2D+%'
 AND EXISTS (SELECT 1 FROM grid_transformation gt2 WHERE gt2.auth_name = 'PROJ' AND gt2.code = gt.auth_name || '_' || gt.code || '_RESTRICTED_TO_VERTCRS');
+
+-- Add records corresponding to EGM2008 grid for WGS 84 realizations
+
+INSERT INTO "grid_transformation"
+SELECT
+    'PROJ' AS auth_name,
+    replace(replace(replace(gcrs.name, ' ', '_'), '(', ''), ')', '') || '_TO_EGM2008',
+    gcrs.name || ' to EGM2008 height (from ' || gt.name || ')' AS name,
+    gt.description,
+    gt.method_auth_name,
+    gt.method_code,
+    gt.method_name,
+    gcrs.auth_name,
+    gcrs.code,
+    gt.target_crs_auth_name,
+    gt.target_crs_code,
+    gt.accuracy,
+    gt.grid_param_auth_name,
+    gt.grid_param_code,
+    gt.grid_param_name,
+    gt.grid_name,
+    gt.grid2_param_auth_name,
+    gt.grid2_param_code,
+    gt.grid2_param_name,
+    gt.grid2_name,
+    gt.param1_auth_name,
+    gt.param1_code,
+    gt.param1_name,
+    gt.param1_value,
+    gt.param1_uom_auth_name,
+    gt.param1_uom_code,
+    gt.param2_auth_name,
+    gt.param2_code,
+    gt.param2_name,
+    gt.param2_value,
+    gt.param2_uom_auth_name,
+    gt.param2_uom_code,
+    gt.interpolation_crs_auth_name,
+    gt.interpolation_crs_code,
+    gt.operation_version,
+    gt.deprecated
+FROM grid_transformation gt, geodetic_crs gcrs
+WHERE gt.name = 'WGS 84 to EGM2008 height (1)'
+AND gcrs.auth_name = 'EPSG' AND gcrs.name LIKE 'WGS 84 (G%' AND gcrs.type='geographic 3D' and gcrs.deprecated=0;
+
+INSERT INTO "usage"
+SELECT
+    'PROJ' AS auth_name,
+    'USAGE_' || replace(replace(replace(gcrs.name, ' ', '_'), '(', ''), ')', '') || '_TO_EGM2008' AS code,
+    'grid_transformation' AS object_table_name,
+    'PROJ' AS object_auth_name,
+    replace(replace(replace(gcrs.name, ' ', '_'), '(', ''), ')', '') || '_TO_EGM2008' AS object_code,
+    u.extent_auth_name,
+    u.extent_code,
+    u.scope_auth_name,
+    u.scope_code
+FROM grid_transformation gt, geodetic_crs gcrs
+JOIN usage u ON u.object_auth_name = gt.auth_name AND u.object_code = gt.code AND u.object_table_name = 'grid_transformation'
+WHERE gt.name = 'WGS 84 to EGM2008 height (1)'
+AND gcrs.auth_name = 'EPSG' AND gcrs.name LIKE 'WGS 84 (G%' AND gcrs.type='geographic 3D' and gcrs.deprecated=0;

@@ -165,6 +165,9 @@ class PROJ_GCC_DLL CRS : public common::ObjectUsage,
     getResolvedCRS(const CRSNNPtr &crs,
                    const io::AuthorityFactoryPtr &authFactory,
                    metadata::ExtentPtr &extentOut);
+
+    PROJ_INTERNAL std::string getOriginatingAuthName() const;
+
     //! @endcond
 
   protected:
@@ -314,6 +317,8 @@ class PROJ_GCC_DLL GeodeticCRS : virtual public SingleCRS,
 
     PROJ_INTERNAL void addGeocentricUnitConversionIntoPROJString(
         io::PROJStringFormatter *formatter) const;
+
+    PROJ_INTERNAL void addAxisSwap(io::PROJStringFormatter *formatter) const;
 
     PROJ_INTERNAL void
     addAngularUnitConvertAndAxisSwap(io::PROJStringFormatter *formatter) const;

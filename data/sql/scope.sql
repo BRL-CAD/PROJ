@@ -267,3 +267,9 @@ INSERT INTO "scope" VALUES('EPSG','1287','Continental mapping of raster data.',0
 INSERT INTO "scope" VALUES('EPSG','1288','Change of coordinate epoch in 2-dimensions (φλ horizontal only).',0);
 INSERT INTO "scope" VALUES('EPSG','1289','Geodesy. Defines ETRF2020.',0);
 INSERT INTO "scope" VALUES('EPSG','1290','Pan-European conformal mapping at scales larger than 1:500,000, engineering survey and topographic mapping at all scales.',0);
+INSERT INTO "scope" VALUES('EPSG','1291','Reference surface for depths in BSHC offshore products for the Baltic Sea (including nautical maps, bathymetry data, water level corrections, etc.).',0);
+INSERT INTO "scope" VALUES('EPSG','1292','Crop inventory mapping.',0);
+INSERT INTO "scope" VALUES('EPSG','1293','Engineering survey and topographic mapping related to the Woodsmith mine project.',0);
+INSERT INTO "scope" VALUES('EPSG','1294','Emulation of SPCS27.',0);
+INSERT INTO "scope" VALUES('EPSG','1295','Geodesy. Active GNSS network / Continuously Operating Reference Station (CORS) network.',0);
+INSERT INTO "scope" VALUES('EPSG','1296','Merging of spatial data referenced to different national realizations of ETRS89 at the sub-decimetre level of accuracy.',0);

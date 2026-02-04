@@ -80,6 +80,7 @@ struct GridInfo {
 struct gridshiftData {
     ListOfGenericGrids m_grids{};
     bool m_defer_grid_opening = false;
+    int m_error_code_in_defer_grid_opening = 0;
     bool m_bHasHorizontalOffset = false;
     bool m_bHasGeographic3DOffset = false;
     bool m_bHasEllipsoidalHeightOffset = false;
@@ -724,10 +725,14 @@ PJ_XYZ gridshiftData::grid_apply_internal(
 // ---------------------------------------------------------------------------
 
 bool gridshiftData::loadGridsIfNeeded(PJ *P) {
-    if (m_defer_grid_opening) {
+    if (m_error_code_in_defer_grid_opening) {
+        proj_errno_set(P, m_error_code_in_defer_grid_opening);
+        return false;
+    } else if (m_defer_grid_opening) {
         m_defer_grid_opening = false;
         m_grids = pj_generic_grid_init(P, "grids");
-        if (proj_errno(P)) {
+        m_error_code_in_defer_grid_opening = proj_errno(P);
+        if (m_error_code_in_defer_grid_opening) {
             return false;
         }
         bool isProjectedCoord;
@@ -964,13 +969,13 @@ PJ *PJ_TRANSFORMATION(gridshift, 0) {
         Q->m_skip_z_transform = true;
     }
 
-    // +coord_type not advertized in documentation on purpose for now.
+    // +coord_type not advertised in documentation on purpose for now.
     // It is probably useless to do it, as the only potential use case of it
-    // would be for PROJ itself when generating pipelines with defered grid
+    // would be for PROJ itself when generating pipelines with deferred grid
     // opening.
     if (pj_param(P->ctx, P->params, "tcoord_type").i) {
         // Check the coordinate type (projected/geographic) from the explicit
-        // +coord_type switch. This is mostly only useful in defered grid
+        // +coord_type switch. This is mostly only useful in deferred grid
         // opening, otherwise we have figured it out above in checkGridTypes()
         const char *coord_type = pj_param(P->ctx, P->params, "scoord_type").s;
         if (coord_type) {

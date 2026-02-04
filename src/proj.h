@@ -174,8 +174,8 @@ extern "C" {
 
 /* The version numbers should be updated with every release! **/
 #define PROJ_VERSION_MAJOR 9
-#define PROJ_VERSION_MINOR 5
-#define PROJ_VERSION_PATCH 0
+#define PROJ_VERSION_MINOR 7
+#define PROJ_VERSION_PATCH 1
 
 /* Note: the following 3 defines have been introduced in PROJ 8.0.1 */
 /* Macro to compute a PROJ version number from its components */
@@ -640,6 +640,16 @@ int PROJ_DLL proj_trans_bounds(PJ_CONTEXT *context, PJ *P,
                                double xmax, double ymax, double *out_xmin,
                                double *out_ymin, double *out_xmax,
                                double *out_ymax, int densify_pts);
+
+int PROJ_DLL proj_trans_bounds_3D(PJ_CONTEXT *context, PJ *P,
+                                  PJ_DIRECTION direction, const double xmin,
+                                  const double ymin, const double zmin,
+                                  const double xmax, const double ymax,
+                                  const double zmax, double *out_xmin,
+                                  double *out_ymin, double *out_zmin,
+                                  double *out_xmax, double *out_ymax,
+                                  double *out_zmax, const int densify_pts);
+
 /*! @cond Doxygen_Suppress */
 
 /* Initializers */
@@ -664,6 +674,36 @@ double PROJ_DLL proj_xyz_dist(PJ_COORD a, PJ_COORD b);
 /* Geodesic distance (in meter) + fwd and rev azimuth between two points on the
  * ellipsoid */
 PJ_COORD PROJ_DLL proj_geod(const PJ *P, PJ_COORD a, PJ_COORD b);
+
+/**
+ * @brief Solves the direct geodesic problem for given projection ellipsoid
+ *
+ * @param P
+ *      Transformation or CRS object
+ *
+ * @param a
+ *      Coordinate of first point. The coordinates needs to be given as
+ * longitude and latitude in radians. Note that the axis order of the `P` object
+ * is not taken into account in this function, so even though a CRS object comes
+ * with axis ordering latitude/longitude coordinates used in this function
+ * should be reordered as longitude latitude.
+ *
+ * @param azimuth
+ *      Initial azimuth from first point to second point in radians, measured
+ *      clockwise from true north
+ *
+ * @param distance
+ *      Geodesic distance from the starting point to the destination, in meters
+ *
+ * @return
+ *      `PJ_COORD` where the first value is the longitude in radians, second
+ * value is latitude in radians and third value is forward azimuth at second
+ * point in radians. The fourth coordinate value is unused.
+ *
+ * @see proj_geod() for solving the inverse geodesic problem.
+ */
+PJ_COORD PROJ_DLL proj_geod_direct(const PJ *P, PJ_COORD a, double azimuth,
+                                   double distance);
 
 /* PROJ error codes */
 

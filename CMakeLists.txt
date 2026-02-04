@@ -21,8 +21,8 @@ cmake_policy(SET CMP0054 NEW)
 
 # Set C++ version
 # Make CMAKE_CXX_STANDARD available as cache option overridable by user
-set(CMAKE_CXX_STANDARD 11
-  CACHE STRING "C++ standard version to use (default is 11)")
+set(CMAKE_CXX_STANDARD 17
+  CACHE STRING "C++ standard version to use (default is 17)")
 message(STATUS "Requiring C++${CMAKE_CXX_STANDARD}")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -59,6 +59,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
     -Wduplicated-cond
     -Wduplicated-branches
     -Wlogical-op
+    -Wimplicit-fallthrough
   )
   set(PROJ_C_WARN_FLAGS ${PROJ_common_WARN_FLAGS}
     -Wmissing-prototypes
@@ -71,6 +72,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
     # -Wold-style-cast
     -Woverloaded-virtual
     -Wzero-as-null-pointer-constant
+    -Wdeprecated-copy-dtor
   )
 elseif("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
   set(PROJ_common_WARN_FLAGS ${PROJ_common_WARN_FLAGS}
@@ -79,8 +81,14 @@ elseif("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
     -Wdocumentation -Wno-documentation-deprecated-sync
     -Wfloat-conversion
     -Wlogical-op-parentheses
-    # -Wweak-vtables
+    -Wimplicit-fallthrough
   )
+
+  # Not sure about the minimum version, but clang 12 complains about \file, @cond Doxygen_Suppress, etc.
+  if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL 18.0.0)
+      set(PROJ_common_WARN_FLAGS ${PROJ_common_WARN_FLAGS} -Wdocumentation-unknown-command)
+  endif()
+
   set(PROJ_C_WARN_FLAGS ${PROJ_common_WARN_FLAGS}
     -Wmissing-prototypes
     -Wc11-extensions
@@ -93,6 +101,8 @@ elseif("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
     -Wshorten-64-to-32
     -Wunused-private-field
     -Wzero-as-null-pointer-constant
+    -Wdeprecated-copy-dtor
+    -Wweak-vtables
   )
 elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "MSVC")
   add_definitions(/D_CRT_SECURE_NO_WARNINGS) # Eliminate deprecation warnings
@@ -143,7 +153,7 @@ message(STATUS "Configuring PROJ:")
 #PROJ version information
 ################################################################################
 include(ProjVersion)
-proj_version(MAJOR 9 MINOR 5 PATCH 0)
+proj_version(MAJOR 9 MINOR 7 PATCH 1)
 set(PROJ_SOVERSION 25)
 set(PROJ_BUILD_VERSION "${PROJ_SOVERSION}.${PROJ_VERSION}")
 
@@ -155,6 +165,13 @@ include(Ccache)
 include(ProjConfig)
 include(ProjMac)
 include(policies)
+
+##############################################
+### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
+##############################################
+
+# default config is shared
+option(BUILD_SHARED_LIBS "Build PROJ library shared." ON)
 
 ################################################################################
 # Check for nlohmann_json
@@ -289,14 +306,6 @@ if(Threads_FOUND AND CMAKE_USE_PTHREADS_INIT)
     "${CMAKE_REQUIRED_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}")
 endif()
 
-include(CheckCSourceCompiles)
-if(MSVC)
-  set(CMAKE_REQUIRED_FLAGS "${CMAKE_C_FLAGS} /WX /W4")
-else()
-  set(CMAKE_REQUIRED_LIBRARIES m)
-  set(CMAKE_REQUIRED_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall")
-endif()
-
 # Set a default build type for single-configuration cmake generators if
 # no build type is set.
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -341,17 +350,76 @@ set(PROJ_DATA_PATH "${CMAKE_INSTALL_FULL_DATADIR}/proj")
 ################################################################################
 # Tests
 ################################################################################
-include(CTest)
 
+option(BUILD_TESTING "Build the testing tree." ON)
 if(BUILD_TESTING)
+  enable_testing()
   include(ProjTest)
 else()
   message(STATUS "Testing disabled")
 endif()
 
 ################################################################################
+# Whether we should embed resources
+################################################################################
+
+function (is_sharp_embed_available res)
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.21 AND
+        ((CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 15.0) OR
+         (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 19.0)))
+        # CMAKE_C_STANDARD=23 only supported since CMake 3.21
+        set(TEST_SHARP_EMBED
+          "static const unsigned char embedded[] = {\n#embed __FILE__\n};\nint main() { (void)embedded; return 0;}"
+        )
+        set(CMAKE_C_STANDARD_BACKUP "${CMAKE_C_STANDARD}")
+        set(CMAKE_C_STANDARD "23")
+        check_c_source_compiles("${TEST_SHARP_EMBED}" _TEST_SHARP_EMBED)
+        set(CMAKE_C_STANDARD "${CMAKE_C_STANDARD_BACKUP}")
+        if (_TEST_SHARP_EMBED)
+            set(${res} ON PARENT_SCOPE)
+        else()
+            set(${res} OFF PARENT_SCOPE)
+        endif()
+    else()
+        set(${res} OFF PARENT_SCOPE)
+    endif()
+endfunction()
+
+is_sharp_embed_available(IS_SHARP_EMBED_AVAILABLE_RES)
+if (NOT DEFINED BUILD_SHARED_LIBS)
+    message(FATAL_ERROR "BUILD_SHARED_LIBS should be set")
+endif()
+if (NOT BUILD_SHARED_LIBS)
+    set(DEFAULT_EMBED_RESOURCE_FILES ON)
+else()
+    set(DEFAULT_EMBED_RESOURCE_FILES OFF)
+endif()
+option(EMBED_RESOURCE_FILES "Whether resource files (limited to proj.db) should be embedded into the PROJ library" ${DEFAULT_EMBED_RESOURCE_FILES})
+
+option(USE_ONLY_EMBEDDED_RESOURCE_FILES "Whether embedded resource files (limited to proj.db) should be used (should nominally be used together with EMBED_RESOURCE_FILES=ON, otherwise this will result in non-functional builds)" OFF)
+
+if (USE_ONLY_EMBEDDED_RESOURCE_FILES AND NOT EMBED_RESOURCE_FILES)
+  message(WARNING "USE_ONLY_EMBEDDED_RESOURCE_FILES=ON set but EMBED_RESOURCE_FILES=OFF: some drivers will lack required resource files")
+endif()
+
+################################################################################
 # Build configured components
 ################################################################################
+
+set(PROJ_DICTIONARY
+  world
+  other.extra
+  nad27
+  GL27
+  nad83
+  nad.lst
+  CH
+  ITRF2000
+  ITRF2008
+  ITRF2014
+  ITRF2020
+)
+
 include_directories(${PROJ_SOURCE_DIR}/src)
 
 add_subdirectory(data)
@@ -368,9 +436,34 @@ if(BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
+add_subdirectory(scripts)
+
 set(docfiles COPYING NEWS.md AUTHORS.md)
 install(FILES ${docfiles}
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+################################################################################
+# Build debug symbols
+################################################################################
+option(EXPORT_PDB "Export PDB file" OFF)
+
+if (WIN32 AND EXPORT_PDB)
+  target_compile_options(proj PRIVATE /Zi /Zf)
+  target_link_options(proj PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+
+  if(BUILD_SHARED_LIBS)
+    set(pdbFile $<TARGET_PDB_FILE:proj>)
+  else()
+    set(pdbDirFullPath ${CMAKE_BINARY_DIR}/lib)
+    set_target_properties(proj
+        PROPERTIES
+            COMPILE_PDB_OUTPUT_DIRECTORY ${pdbDirFullPath}
+            COMPILE_PDB_NAME proj)
+    set(pdbFile ${pdbDirFullPath}/proj.pdb)
+  endif()
+
+  install(FILES ${pdbFile} DESTINATION lib)
+endif()
 
 ################################################################################
 # pkg-config support
@@ -412,7 +505,6 @@ set(CPACK_SOURCE_IGNORE_FILES
   /m4/libtool*
   /media/
   /schemas/
-  /scripts/
   /test/fuzzers/
   /test/gigs/.*gie\\.failing
   /test/postinstall/
@@ -432,3 +524,5 @@ endif()
 
 configure_file(cmake/uninstall.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/proj_uninstall.cmake @ONLY)
 add_custom_target(uninstall COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/proj_uninstall.cmake)
+
+message(STATUS "EMBED_RESOURCE_FILES=${EMBED_RESOURCE_FILES}")

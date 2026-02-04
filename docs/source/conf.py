@@ -9,8 +9,6 @@ import os
 import sys
 from datetime import date
 
-import sphinx_rtd_theme
-
 sys.path.insert(0, os.path.abspath("."))
 sys.path.insert(0, os.path.abspath("_extensions"))
 
@@ -25,16 +23,15 @@ title = "PROJ coordinate transformation software library"
 author = "PROJ contributors"
 
 # The major project version, used as the replacement for |version|
-version = "9.5"
+version = "9.7"
 
 # The full project version, used as the replacement for |release|
-release = "9.5.0-dev"
+release = "9.7.1"
 
 # PROJ-data version
-data_version = "1.19"
+data_version = "1.24"
 
-#today_date = date.today()
-today_date = date(2024, 3, 1)  # or use a specific date
+today_date = date(2025, 1, 12) # or use a specific date
 today_fmt = "%d %b %Y"
 
 copyright = "1983-{}, PROJ contributors".format(today_date.year)
@@ -119,7 +116,7 @@ html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     "canonical_url": "https://proj.org",
     "logo_only": True,
-    "display_version": True,
+    "version_selector": True,
     "prev_next_buttons_location": "both",
     "style_external_links": False,
     "style_nav_header_background": "#353130",
@@ -131,9 +128,6 @@ html_theme_options = {
     "titles_only": False,
 }
 
-# Add any paths that contain custom themes here, relative to this directory
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
-
 # Display "Edit on GitHub" link on each page
 # https://docs.readthedocs.io/en/stable/guides/edit-source-links-sphinx.html
 html_context = {
@@ -141,7 +135,7 @@ html_context = {
     "theme_vcs_pageview_mode": "edit",
     "github_user": "OSGeo",
     "github_repo": "PROJ",
-    "github_version": "9.4",
+    "github_version": "9.7",
     "conf_py_path": "/docs/source/",
 }
 
@@ -154,7 +148,10 @@ html_favicon = "../images/favicon.png"
 # Add any paths that contain custom static files (such as style sheets)
 html_static_path = ["_static"]
 
-htm_css_files = [
+# For robots.txt
+html_extra_path = ["extra_path"]
+
+html_css_files = [
     "theme_overrides.css",  # override wide tables in RTD theme
 ]
 
@@ -278,3 +275,10 @@ html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 # Tell Jinja2 templates the build is running on Read the Docs
 if os.environ.get("READTHEDOCS", "") == "True":
     html_context["READTHEDOCS"] = True
+
+# -- Spelling --------------------------------------------------
+
+# Avoid running git
+spelling_ignore_contributor_names = False
+
+spelling_word_list_filename = ["spelling_wordlist.txt"]

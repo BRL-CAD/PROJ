@@ -30,12 +30,14 @@ jobs:
       GHA_CI_PLATFORM: ${{ matrix.platform }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - uses: conda-incubator/setup-miniconda@v3
       with:
-        miniforge-variant: Mambaforge
         miniforge-version: latest
+        use-mamba: true
+        channels: conda-forge
+        auto-update-conda: true
 
     - name: Setup
       shell: bash -l {0}

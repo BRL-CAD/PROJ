@@ -41,6 +41,7 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -67,6 +68,10 @@
 #endif
 #include <sys/types.h>
 #include <unistd.h>
+#endif
+
+#ifdef EMBED_RESOURCE_FILES
+#include "embedded_resources.h"
 #endif
 
 //! @cond Doxygen_Suppress
@@ -583,6 +588,12 @@ static std::string Win32Recode(const char *src, unsigned src_code_page,
     return out;
 }
 
+#endif // _defined(_WIN32)
+
+#if !(EMBED_RESOURCE_FILES && USE_ONLY_EMBEDDED_RESOURCE_FILES)
+
+#ifdef _WIN32
+
 // ---------------------------------------------------------------------------
 
 class FileWin32 : public File {
@@ -722,7 +733,8 @@ std::unique_ptr<File> FileWin32::open(PJ_CONTEXT *ctx, const char *filename,
         return nullptr;
     }
 }
-#else
+
+#else // if !defined(_WIN32)
 
 // ---------------------------------------------------------------------------
 
@@ -792,7 +804,7 @@ unsigned long long FileStdio::tell() {
 
 std::unique_ptr<File> FileStdio::open(PJ_CONTEXT *ctx, const char *filename,
                                       FileAccess access) {
-    auto fp = fopen(filename, access == FileAccess::READ_ONLY     ? "rb"
+    auto fp = fopen(filename, access == FileAccess::READ_ONLY ? "rb"
                               : access == FileAccess::READ_UPDATE ? "r+b"
                                                                   : "w+b");
     return std::unique_ptr<File>(fp ? new FileStdio(filename, ctx, fp)
@@ -800,6 +812,8 @@ std::unique_ptr<File> FileStdio::open(PJ_CONTEXT *ctx, const char *filename,
 }
 
 #endif // _WIN32
+
+#endif // !(EMBED_RESOURCE_FILES && USE_ONLY_EMBEDDED_RESOURCE_FILES)
 
 // ---------------------------------------------------------------------------
 
@@ -889,6 +903,80 @@ std::unique_ptr<File> FileApiAdapter::open(PJ_CONTEXT *ctx,
 
 // ---------------------------------------------------------------------------
 
+#if EMBED_RESOURCE_FILES
+
+class FileMemory : public File {
+    PJ_CONTEXT *m_ctx;
+    const unsigned char *const m_data;
+    const size_t m_size;
+    size_t m_pos = 0;
+
+    FileMemory(const FileMemory &) = delete;
+    FileMemory &operator=(const FileMemory &) = delete;
+
+  protected:
+    FileMemory(const std::string &filename, PJ_CONTEXT *ctx,
+               const unsigned char *data, size_t size)
+        : File(filename), m_ctx(ctx), m_data(data), m_size(size) {}
+
+  public:
+    size_t read(void *buffer, size_t sizeBytes) override;
+    size_t write(const void *, size_t) override;
+    bool seek(unsigned long long offset, int whence = SEEK_SET) override;
+    unsigned long long tell() override { return m_pos; }
+    void reassign_context(PJ_CONTEXT *ctx) override { m_ctx = ctx; }
+
+    bool hasChanged() const override { return false; }
+
+    static std::unique_ptr<File> open(PJ_CONTEXT *ctx, const char *filename,
+                                      FileAccess access,
+                                      const unsigned char *data, size_t size) {
+        if (access != FileAccess::READ_ONLY)
+            return nullptr;
+        return std::unique_ptr<File>(new FileMemory(filename, ctx, data, size));
+    }
+};
+
+size_t FileMemory::read(void *buffer, size_t sizeBytes) {
+    if (m_pos >= m_size)
+        return 0;
+    if (sizeBytes >= m_size - m_pos) {
+        const size_t bytesToCopy = m_size - m_pos;
+        memcpy(buffer, m_data + m_pos, bytesToCopy);
+        m_pos = m_size;
+        return bytesToCopy;
+    }
+    memcpy(buffer, m_data + m_pos, sizeBytes);
+    m_pos += sizeBytes;
+    return sizeBytes;
+}
+
+size_t FileMemory::write(const void *, size_t) {
+    // shouldn't happen given we have bailed out in open() in non read-only
+    // modes
+    return 0;
+}
+
+bool FileMemory::seek(unsigned long long offset, int whence) {
+    if (whence == SEEK_SET) {
+        m_pos = static_cast<size_t>(offset);
+        return m_pos == offset;
+    } else if (whence == SEEK_CUR) {
+        const unsigned long long newPos = m_pos + offset;
+        m_pos = static_cast<size_t>(newPos);
+        return m_pos == newPos;
+    } else {
+        if (offset != 0)
+            return false;
+        m_pos = m_size;
+        return true;
+    }
+}
+
+#endif
+
+// ---------------------------------------------------------------------------
+
 std::unique_ptr<File> FileManager::open(PJ_CONTEXT *ctx, const char *filename,
                                         FileAccess access) {
     if (starts_with(filename, "http://") || starts_with(filename, "https://")) {
@@ -905,11 +993,31 @@ std::unique_ptr<File> FileManager::open(PJ_CONTEXT *ctx, const char *filename,
     if (ctx->fileApi.open_cbk != nullptr) {
         return FileApiAdapter::open(ctx, filename, access);
     }
+
+    std::unique_ptr<File> ret;
+#if !(EMBED_RESOURCE_FILES && USE_ONLY_EMBEDDED_RESOURCE_FILES)
 #ifdef _WIN32
-    return FileWin32::open(ctx, filename, access);
+    ret = FileWin32::open(ctx, filename, access);
 #else
-    return FileStdio::open(ctx, filename, access);
+    ret = FileStdio::open(ctx, filename, access);
 #endif
+#endif
+
+#if EMBED_RESOURCE_FILES
+#if USE_ONLY_EMBEDDED_RESOURCE_FILES
+    if (!ret)
+#endif
+    {
+        unsigned int size = 0;
+        const unsigned char *in_memory_data =
+            pj_get_embedded_resource(filename, &size);
+        if (in_memory_data) {
+            ret = FileMemory::open(ctx, filename, access, in_memory_data, size);
+        }
+    }
+#endif
+
+    return ret;
 }
 
 // ---------------------------------------------------------------------------
@@ -1570,6 +1678,24 @@ static void *pj_open_lib_internal(
             errno = 0;
         }
 
+#if EMBED_RESOURCE_FILES
+        if (!fid && fname != name && name[0] != '.' && name[0] != '/' &&
+            name[0] != '~' && !starts_with(name, "http://") &&
+            !starts_with(name, "https://")) {
+            fid = open_file(ctx, name, mode);
+            if (fid) {
+                if (out_full_filename != nullptr &&
+                    out_full_filename_size > 0) {
+                    // cppcheck-suppress nullPointer
+                    strncpy(out_full_filename, name, out_full_filename_size);
+                    out_full_filename[out_full_filename_size - 1] = '\0';
+                }
+                fname = name;
+                errno = 0;
+            }
+        }
+#endif
+
         if (ctx->last_errno == 0 && errno != 0)
             proj_context_errno_set(ctx, errno);
 
@@ -1601,9 +1727,8 @@ std::vector<std::string> pj_get_default_searchpaths(PJ_CONTEXT *ctx) {
         ret.push_back(proj_context_get_user_writable_directory(ctx, false));
     }
 
-    const std::string envPROJ_DATA =
-        NS_PROJ::FileManager::getProjDataEnvVar(ctx);
-    const std::string relativeSharedProj = pj_get_relative_share_proj(ctx);
+    std::string envPROJ_DATA = NS_PROJ::FileManager::getProjDataEnvVar(ctx);
+    std::string relativeSharedProj = pj_get_relative_share_proj(ctx);
 
     if (gbPROJ_DATA_ENV_VAR_TRIED_LAST) {
 /* Situation where PROJ_DATA environment variable is tried in last */
@@ -1611,18 +1736,18 @@ std::vector<std::string> pj_get_default_searchpaths(PJ_CONTEXT *ctx) {
         ret.push_back(PROJ_DATA);
 #endif
         if (!relativeSharedProj.empty()) {
-            ret.push_back(relativeSharedProj);
+            ret.push_back(std::move(relativeSharedProj));
         }
         if (!envPROJ_DATA.empty()) {
-            ret.push_back(envPROJ_DATA);
+            ret.push_back(std::move(envPROJ_DATA));
         }
     } else {
         /* Situation where PROJ_DATA environment variable is used if defined */
         if (!envPROJ_DATA.empty()) {
-            ret.push_back(envPROJ_DATA);
+            ret.push_back(std::move(envPROJ_DATA));
         } else {
             if (!relativeSharedProj.empty()) {
-                ret.push_back(relativeSharedProj);
+                ret.push_back(std::move(relativeSharedProj));
             }
 #ifdef PROJ_DATA
             ret.push_back(PROJ_DATA);
@@ -1682,7 +1807,7 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
         auto dbContext = getDBcontext(ctx);
         if (dbContext) {
             try {
-                const auto filename = dbContext->getProjGridName(name);
+                auto filename = dbContext->getProjGridName(name);
                 if (!filename.empty()) {
                     file.reset(reinterpret_cast<NS_PROJ::File *>(
                         pj_open_lib_internal(ctx, filename.c_str(), "rb",
@@ -1694,7 +1819,7 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
                     } else {
                         // For final network access attempt, use the new
                         // name.
-                        tmpString = filename;
+                        tmpString = std::move(filename);
                         name = tmpString.c_str();
                     }
                 }
@@ -1735,12 +1860,52 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
         !is_rel_or_absolute_filename(name) && !starts_with(name, "http://") &&
         !starts_with(name, "https://") &&
         proj_context_is_network_enabled(ctx)) {
-        std::string remote_file(proj_context_get_url_endpoint(ctx));
-        if (!remote_file.empty()) {
-            if (remote_file.back() != '/') {
-                remote_file += '/';
+
+        std::string remote_file;
+        auto dbContext = getDBcontext(ctx);
+        if (dbContext) {
+            try {
+                std::string fullFilename, packageName, url;
+                bool directDownload = false;
+                bool openLicense = false;
+                bool gridAvailable = false;
+                proj_context_set_enable_network(ctx,
+                                                false); // prevent recursion
+                const bool found = dbContext->lookForGridInfo(
+                    name, /* considerKnownGridsAsAvailable = */ true,
+                    fullFilename, packageName, url, directDownload, openLicense,
+                    gridAvailable);
+                proj_context_set_enable_network(ctx, true);
+                if (found && !url.empty() && directDownload) {
+                    remote_file = url;
+                    if (starts_with(url, "https://cdn.proj.org/")) {
+                        std::string endpoint =
+                            proj_context_get_url_endpoint(ctx);
+                        if (!endpoint.empty()) {
+                            remote_file = std::move(endpoint);
+                            if (remote_file.back() != '/') {
+                                remote_file += '/';
+                            }
+                            remote_file += name;
+                        }
+                    }
+                }
+            } catch (const std::exception &e) {
+                proj_context_set_enable_network(ctx, true);
+                pj_log(ctx, PJ_LOG_DEBUG, "%s", e.what());
+                return nullptr;
             }
-            remote_file += name;
+        }
+        if (remote_file.empty()) {
+            remote_file = proj_context_get_url_endpoint(ctx);
+            if (!remote_file.empty()) {
+                if (remote_file.back() != '/') {
+                    remote_file += '/';
+                }
+                remote_file += name;
+            }
+        }
+        if (!remote_file.empty()) {
             file =
                 open(ctx, remote_file.c_str(), NS_PROJ::FileAccess::READ_ONLY);
             if (file) {
@@ -1775,6 +1940,16 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
  */
 int pj_find_file(PJ_CONTEXT *ctx, const char *short_filename,
                  char *out_full_filename, size_t out_full_filename_size) {
+    const auto iter = ctx->lookupedFiles.find(short_filename);
+    if (iter != ctx->lookupedFiles.end()) {
+        if (iter->second.empty()) {
+            out_full_filename[0] = 0;
+            return 0;
+        }
+        snprintf(out_full_filename, out_full_filename_size, "%s",
+                 iter->second.c_str());
+        return 1;
+    }
     const bool old_network_enabled =
         proj_context_is_network_enabled(ctx) != FALSE;
     if (old_network_enabled)
@@ -1783,6 +1958,11 @@ int pj_find_file(PJ_CONTEXT *ctx, const char *short_filename,
         ctx, short_filename, out_full_filename, out_full_filename_size);
     if (old_network_enabled)
         proj_context_set_enable_network(ctx, true);
+    if (file) {
+        ctx->lookupedFiles[short_filename] = out_full_filename;
+    } else {
+        ctx->lookupedFiles[short_filename] = std::string();
+    }
     return file != nullptr;
 }
 
@@ -1849,22 +2029,31 @@ void pj_load_ini(PJ_CONTEXT *ctx) {
             ci_equal(proj_only_best_default, "TRUE");
     }
 
+    const char *native_ca = getenv("PROJ_NATIVE_CA");
+    if (native_ca && native_ca[0] != '\0') {
+        ctx->native_ca = ci_equal(native_ca, "ON") ||
+                         ci_equal(native_ca, "YES") ||
+                         ci_equal(native_ca, "TRUE");
+    } else {
+        native_ca = nullptr;
+    }
+
     ctx->iniFileLoaded = true;
+    std::string content;
     auto file = std::unique_ptr<NS_PROJ::File>(
         reinterpret_cast<NS_PROJ::File *>(pj_open_lib_internal(
             ctx, "proj.ini", "rb", pj_open_file_with_manager, nullptr, 0)));
-    if (!file)
-        return;
-    file->seek(0, SEEK_END);
-    const auto filesize = file->tell();
-    if (filesize == 0 || filesize > 100 * 1024U)
-        return;
-    file->seek(0, SEEK_SET);
-    std::string content;
-    content.resize(static_cast<size_t>(filesize));
-    const auto nread = file->read(&content[0], content.size());
-    if (nread != content.size())
-        return;
+    if (file) {
+        file->seek(0, SEEK_END);
+        const auto filesize = file->tell();
+        if (filesize == 0 || filesize > 100 * 1024U)
+            return;
+        file->seek(0, SEEK_SET);
+        content.resize(static_cast<size_t>(filesize));
+        const auto nread = file->read(&content[0], content.size());
+        if (nread != content.size())
+            return;
+    }
     content += '\n';
     size_t pos = 0;
     while (pos != std::string::npos) {
@@ -1876,10 +2065,9 @@ void pj_load_ini(PJ_CONTEXT *ctx) {
         const auto equal = content.find('=', pos);
         if (equal < eol) {
             const auto key = trim(content.substr(pos, equal - pos));
-            const auto value =
-                trim(content.substr(equal + 1, eol - (equal + 1)));
+            auto value = trim(content.substr(equal + 1, eol - (equal + 1)));
             if (ctx->endpoint.empty() && key == "cdn_endpoint") {
-                ctx->endpoint = value;
+                ctx->endpoint = std::move(value);
             } else if (proj_network == nullptr && key == "network") {
                 ctx->networking.enabled = ci_equal(value, "ON") ||
                                           ci_equal(value, "YES") ||
@@ -1907,13 +2095,17 @@ void pj_load_ini(PJ_CONTEXT *ctx) {
                         "pj_load_ini(): Invalid value for tmerc_default_algo");
                 }
             } else if (ca_bundle_path == nullptr && key == "ca_bundle_path") {
-                ctx->ca_bundle_path = value;
+                ctx->ca_bundle_path = std::move(value);
             } else if (proj_only_best_default == nullptr &&
                        key == "only_best_default") {
                 ctx->warnIfBestTransformationNotAvailableDefault = false;
                 ctx->errorIfBestTransformationNotAvailableDefault =
                     ci_equal(value, "ON") || ci_equal(value, "YES") ||
                     ci_equal(value, "TRUE");
+            } else if (native_ca == nullptr && key == "native_ca") {
+                ctx->native_ca = ci_equal(value, "ON") ||
+                                 ci_equal(value, "YES") ||
+                                 ci_equal(value, "TRUE");
             }
         }
 

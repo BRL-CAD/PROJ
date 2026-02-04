@@ -37,7 +37,7 @@ if(TESTING_USE_NETWORK)
       )
     else()
       message(WARNING
-        "Cannot establish if network is avalable - "
+        "Cannot establish if network is available - "
         "'curl' or 'ping' not found"
       )
     endif()
@@ -78,6 +78,7 @@ proj_add_gie_test("adams_ws2" "gie/adams_ws2.gie")
 proj_add_gie_test("guyou" "gie/guyou.gie")
 proj_add_gie_test("peirce_q" "gie/peirce_q.gie")
 proj_add_gie_test("tinshift" "gie/tinshift.gie")
+proj_add_gie_test("spilhaus" "gie/spilhaus.gie")
 
 if(TIFF_ENABLED)
 proj_add_gie_test("Deformation" "gie/deformation.gie")

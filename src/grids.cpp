@@ -45,6 +45,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 NS_PROJ_START
 
@@ -57,7 +58,8 @@ using namespace internal;
 /************************************************************************/
 
 static const int byte_order_test = 1;
-#define IS_LSB (1 == ((const unsigned char *)(&byte_order_test))[0])
+#define IS_LSB                                                                 \
+    (1 == (reinterpret_cast<const unsigned char *>(&byte_order_test))[0])
 
 static void swap_words(void *dataIn, size_t word_size, size_t word_count)
 
@@ -306,7 +308,7 @@ GTXVerticalShiftGrid *GTXVerticalShiftGrid::open(PJ_CONTEXT *ctx,
 
     // Cache up to 1 megapixel per GTX file
     const int maxLinesInCache = 1024 * 1024 / columns;
-    auto cache = internal::make_unique<FloatLineCache>(maxLinesInCache);
+    auto cache = std::make_unique<FloatLineCache>(maxLinesInCache);
     return new GTXVerticalShiftGrid(ctx, std::move(fp), name, columns, rows,
                                     extent, std::move(cache));
 }
@@ -1320,6 +1322,15 @@ std::unique_ptr<GTiffGrid> GTiffDataset::nextGrid() {
     m_ifdIdx++;
     m_hasNextGrid = TIFFReadDirectory(m_hTIFF) != 0;
     m_nextDirOffset = TIFFCurrentDirOffset(m_hTIFF);
+
+    // If the TIFF file contains multiple grids, append the index of the grid
+    // in the grid name to help debugging.
+    if (m_ifdIdx >= 2 || m_hasNextGrid) {
+        ret->m_name += " (index ";
+        ret->m_name += std::to_string(m_ifdIdx); // 1-based
+        ret->m_name += ')';
+    }
+
     return ret;
 }
 
@@ -1588,8 +1599,7 @@ GTiffVGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto vgrid =
-            internal::make_unique<GTiffVGrid>(std::move(grid), idxSample);
+        auto vgrid = std::make_unique<GTiffVGrid>(std::move(grid), idxSample);
 
         insertIntoHierarchy(ctx, std::move(vgrid), gridName, parentName,
                             set->m_grids, mapGrids);
@@ -2324,7 +2334,7 @@ std::unique_ptr<NTv2GridSet> NTv2GridSet::open(PJ_CONTEXT *ctx,
 
     // Cache up to 1 megapixel per NTv2 file
     const int maxLinesInCache = 1024 * 1024 / largestLine;
-    set->m_cache = internal::make_unique<FloatLineCache>(maxLinesInCache);
+    set->m_cache = std::make_unique<FloatLineCache>(maxLinesInCache);
     for (const auto &kv : mapGrids) {
         kv.second->setCache(set->m_cache.get());
     }
@@ -2633,7 +2643,7 @@ GTiffHGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto hgrid = internal::make_unique<GTiffHGrid>(
+        auto hgrid = std::make_unique<GTiffHGrid>(
             std::move(grid), idxLatShift, idxLongShift, convFactorToRadian,
             positiveEast);
 
@@ -3030,7 +3040,7 @@ GTiffGenericGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto ggrid = internal::make_unique<GTiffGenericGrid>(std::move(grid));
+        auto ggrid = std::make_unique<GTiffGenericGrid>(std::move(grid));
         if (!set->m_grids.empty() && ggrid->metadataItem("TYPE").empty() &&
             !set->m_grids[0]->metadataItem("TYPE").empty()) {
             ggrid->setFirstGrid(set->m_grids[0].get());
@@ -3912,3 +3922,178 @@ bool pj_bilinear_interpolation_three_samples(
 }
 
 NS_PROJ_END
+
+/*****************************************************************************/
+PJ_GRID_INFO proj_grid_info(const char *gridname) {
+    /******************************************************************************
+        Information about a named datum grid.
+
+        Returns PJ_GRID_INFO struct.
+    ******************************************************************************/
+    PJ_GRID_INFO grinfo;
+
+    /*PJ_CONTEXT *ctx = proj_context_create(); */
+    PJ_CONTEXT *ctx = pj_get_default_ctx();
+    memset(&grinfo, 0, sizeof(PJ_GRID_INFO));
+
+    const auto fillGridInfo = [&grinfo, ctx,
+                               gridname](const NS_PROJ::Grid &grid,
+                                         const std::string &format) {
+        const auto &extent = grid.extentAndRes();
+
+        /* name of grid */
+        strncpy(grinfo.gridname, gridname, sizeof(grinfo.gridname) - 1);
+
+        /* full path of grid */
+        if (!pj_find_file(ctx, gridname, grinfo.filename,
+                          sizeof(grinfo.filename) - 1)) {
+            // Can happen when using a remote grid
+            grinfo.filename[0] = 0;
+        }
+
+        /* grid format */
+        strncpy(grinfo.format, format.c_str(), sizeof(grinfo.format) - 1);
+
+        /* grid size */
+        grinfo.n_lon = grid.width();
+        grinfo.n_lat = grid.height();
+
+        /* cell size */
+        grinfo.cs_lon = extent.resX;
+        grinfo.cs_lat = extent.resY;
+
+        /* bounds of grid */
+        grinfo.lowerleft.lam = extent.west;
+        grinfo.lowerleft.phi = extent.south;
+        grinfo.upperright.lam = extent.east;
+        grinfo.upperright.phi = extent.north;
+    };
+
+    {
+        const auto gridSet = NS_PROJ::VerticalShiftGridSet::open(ctx, gridname);
+        if (gridSet) {
+            const auto &grids = gridSet->grids();
+            if (!grids.empty()) {
+                const auto &grid = grids.front();
+                fillGridInfo(*grid, gridSet->format());
+                return grinfo;
+            }
+        }
+    }
+
+    {
+        const auto gridSet =
+            NS_PROJ::HorizontalShiftGridSet::open(ctx, gridname);
+        if (gridSet) {
+            const auto &grids = gridSet->grids();
+            if (!grids.empty()) {
+                const auto &grid = grids.front();
+                fillGridInfo(*grid, gridSet->format());
+                return grinfo;
+            }
+        }
+    }
+    strcpy(grinfo.format, "missing");
+    return grinfo;
+}
+
+/*****************************************************************************/
+PJ_INIT_INFO proj_init_info(const char *initname) {
+    /******************************************************************************
+        Information about a named init file.
+
+        Maximum length of initname is 64.
+
+        Returns PJ_INIT_INFO struct.
+
+        If the init file is not found all members of the return struct are set
+        to the empty string.
+
+        If the init file is found, but the metadata is missing, the value is
+        set to "Unknown".
+    ******************************************************************************/
+    int file_found;
+    char param[80], key[74];
+    paralist *start, *next;
+    PJ_INIT_INFO ininfo;
+    PJ_CONTEXT *ctx = pj_get_default_ctx();
+
+    memset(&ininfo, 0, sizeof(PJ_INIT_INFO));
+
+    file_found =
+        pj_find_file(ctx, initname, ininfo.filename, sizeof(ininfo.filename));
+    if (!file_found || strlen(initname) > 64) {
+        if (strcmp(initname, "epsg") == 0 || strcmp(initname, "EPSG") == 0) {
+            const char *val;
+
+            proj_context_errno_set(ctx, 0);
+
+            strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+            strcpy(ininfo.origin, "EPSG");
+            val = proj_context_get_database_metadata(ctx, "EPSG.VERSION");
+            if (val) {
+                strncpy(ininfo.version, val, sizeof(ininfo.version) - 1);
+            }
+            val = proj_context_get_database_metadata(ctx, "EPSG.DATE");
+            if (val) {
+                strncpy(ininfo.lastupdate, val, sizeof(ininfo.lastupdate) - 1);
+            }
+            return ininfo;
+        }
+
+        if (strcmp(initname, "IGNF") == 0) {
+            const char *val;
+
+            proj_context_errno_set(ctx, 0);
+
+            strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+            strcpy(ininfo.origin, "IGNF");
+            val = proj_context_get_database_metadata(ctx, "IGNF.VERSION");
+            if (val) {
+                strncpy(ininfo.version, val, sizeof(ininfo.version) - 1);
+            }
+            val = proj_context_get_database_metadata(ctx, "IGNF.DATE");
+            if (val) {
+                strncpy(ininfo.lastupdate, val, sizeof(ininfo.lastupdate) - 1);
+            }
+            return ininfo;
+        }
+
+        return ininfo;
+    }
+
+    /* The initial memset (0) makes strncpy safe here */
+    strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+    strcpy(ininfo.origin, "Unknown");
+    strcpy(ininfo.version, "Unknown");
+    strcpy(ininfo.lastupdate, "Unknown");
+
+    strncpy(key, initname, 64); /* make room for ":metadata\0" at the end */
+    key[64] = 0;
+    memcpy(key + strlen(key), ":metadata", 9 + 1);
+    strcpy(param, "+init=");
+    /* The +strlen(param) avoids a cppcheck false positive warning */
+    strncat(param + strlen(param), key, sizeof(param) - 1 - strlen(param));
+
+    start = pj_mkparam(param);
+    pj_expand_init(ctx, start);
+
+    if (pj_param(ctx, start, "tversion").i)
+        strncpy(ininfo.version, pj_param(ctx, start, "sversion").s,
+                sizeof(ininfo.version) - 1);
+
+    if (pj_param(ctx, start, "torigin").i)
+        strncpy(ininfo.origin, pj_param(ctx, start, "sorigin").s,
+                sizeof(ininfo.origin) - 1);
+
+    if (pj_param(ctx, start, "tlastupdate").i)
+        strncpy(ininfo.lastupdate, pj_param(ctx, start, "slastupdate").s,
+                sizeof(ininfo.lastupdate) - 1);
+
+    for (; start; start = next) {
+        next = start->next;
+        free(start);
+    }
+
+    return ininfo;
+}

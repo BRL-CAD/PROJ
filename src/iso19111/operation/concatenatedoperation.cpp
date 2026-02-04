@@ -92,15 +92,14 @@ ConcatenatedOperation::~ConcatenatedOperation() = default;
 
 //! @cond Doxygen_Suppress
 ConcatenatedOperation::ConcatenatedOperation(const ConcatenatedOperation &other)
-    : CoordinateOperation(other),
-      d(internal::make_unique<Private>(*(other.d))) {}
+    : CoordinateOperation(other), d(std::make_unique<Private>(*(other.d))) {}
 //! @endcond
 
 // ---------------------------------------------------------------------------
 
 ConcatenatedOperation::ConcatenatedOperation(
     const std::vector<CoordinateOperationNNPtr> &operationsIn)
-    : CoordinateOperation(), d(internal::make_unique<Private>(operationsIn)) {
+    : CoordinateOperation(), d(std::make_unique<Private>(operationsIn)) {
     for (const auto &op : operationsIn) {
         if (op->requiresPerCoordinateInputTime()) {
             setRequiresPerCoordinateInputTime(true);
@@ -161,7 +160,7 @@ static bool areCRSMoreOrLessEquivalent(const crs::CRS *a, const crs::CRS *b) {
  * @param operationsIn Vector of the CoordinateOperation steps.
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 ConcatenatedOperationNNPtr ConcatenatedOperation::create(
     const util::PropertyMap &properties,
@@ -269,11 +268,21 @@ ConcatenatedOperationNNPtr ConcatenatedOperation::create(
 
 // ---------------------------------------------------------------------------
 
-void ConcatenatedOperation::fixStepsDirection(
+/* static */ void
+ConcatenatedOperation::setCRSsUpdateInverse(CoordinateOperation *co,
+                                            const crs::CRSNNPtr &sourceCRS,
+                                            const crs::CRSNNPtr &targetCRS) {
+
+    co->setCRSsUpdateInverse(sourceCRS, targetCRS, co->interpolationCRS());
+}
+
+// ---------------------------------------------------------------------------
+
+void ConcatenatedOperation::fixSteps(
     const crs::CRSNNPtr &concatOpSourceCRS,
     const crs::CRSNNPtr &concatOpTargetCRS,
     std::vector<CoordinateOperationNNPtr> &operationsInOut,
-    const io::DatabaseContextPtr & /*dbContext*/) {
+    const io::DatabaseContextPtr & /*dbContext*/, bool fixDirectionAllowed) {
 
     // Set of heuristics to assign CRS to steps, and possibly reverse them.
 
@@ -297,7 +306,7 @@ void ConcatenatedOperation::fixStepsDirection(
             isAxisOrderReversal(conv->method()->getEPSGCode())) {
             auto reversedCRS = concatOpSourceCRS->applyAxisOrderReversal(
                 NORMALIZED_AXIS_ORDER_SUFFIX_STR);
-            op->setCRSs(concatOpSourceCRS, reversedCRS, nullptr);
+            setCRSsUpdateInverse(op.get(), concatOpSourceCRS, reversedCRS);
         }
     }
 
@@ -312,13 +321,13 @@ void ConcatenatedOperation::fixStepsDirection(
             isAxisOrderReversal(conv->method()->getEPSGCode())) {
             auto reversedCRS = concatOpTargetCRS->applyAxisOrderReversal(
                 NORMALIZED_AXIS_ORDER_SUFFIX_STR);
-            op->setCRSs(reversedCRS, concatOpTargetCRS, nullptr);
+            setCRSsUpdateInverse(op.get(), reversedCRS, concatOpTargetCRS);
         }
     }
 
     // If the first operation is a transformation whose target CRS matches the
     // source CRS of the concatenated operation, then reverse it.
-    if (operationsInOut.size() >= 2) {
+    if (fixDirectionAllowed && operationsInOut.size() >= 2) {
         auto &op = operationsInOut.front();
         auto l_sourceCRS = op->sourceCRS();
         auto l_targetCRS = op->targetCRS();
@@ -333,7 +342,7 @@ void ConcatenatedOperation::fixStepsDirection(
 
     // If the last operation is a transformation whose source CRS matches the
     // target CRS of the concatenated operation, then reverse it.
-    if (operationsInOut.size() >= 2) {
+    if (fixDirectionAllowed && operationsInOut.size() >= 2) {
         auto &op = operationsInOut.back();
         auto l_sourceCRS = op->sourceCRS();
         auto l_targetCRS = op->targetCRS();
@@ -390,10 +399,9 @@ void ConcatenatedOperation::fixStepsDirection(
                     util::nn_dynamic_pointer_cast<InverseConversion>(op);
                 auto nn_targetCRS = NN_NO_CHECK(l_targetCRS);
                 if (invConv) {
-                    invConv->inverse()->setCRSs(nn_targetCRS, concatOpSourceCRS,
-                                                nullptr);
-                    op->setCRSs(concatOpSourceCRS, nn_targetCRS, nullptr);
-                } else {
+                    setCRSsUpdateInverse(op.get(), concatOpSourceCRS,
+                                         nn_targetCRS);
+                } else if (fixDirectionAllowed) {
                     op->setCRSs(nn_targetCRS, concatOpSourceCRS, nullptr);
                     op = op->inverse();
                 }
@@ -401,8 +409,8 @@ void ConcatenatedOperation::fixStepsDirection(
                 /* coverity[copy_paste_error] */
                 l_targetCRS = operationsInOut[i + 1]->sourceCRS();
                 if (l_targetCRS) {
-                    op->setCRSs(concatOpSourceCRS, NN_NO_CHECK(l_targetCRS),
-                                nullptr);
+                    setCRSsUpdateInverse(op.get(), concatOpSourceCRS,
+                                         NN_NO_CHECK(l_targetCRS));
                 }
             }
         } else if (conv && i + 1 == operationsInOut.size() && !l_sourceCRS &&
@@ -430,22 +438,20 @@ void ConcatenatedOperation::fixStepsDirection(
                 if (!l_sourceCRS) {
                     l_sourceCRS = derivedCRS->baseCRS().as_nullable();
                 }
-                op->setCRSs(NN_NO_CHECK(l_sourceCRS), concatOpTargetCRS,
-                            nullptr);
+                setCRSsUpdateInverse(op.get(), NN_NO_CHECK(l_sourceCRS),
+                                     concatOpTargetCRS);
             } else if (i >= 1) {
                 l_sourceCRS = operationsInOut[i - 1]->targetCRS();
                 if (l_sourceCRS) {
                     derivedCRS = extractDerivedCRS(l_sourceCRS.get());
-                    if (derivedCRS &&
+                    if (fixDirectionAllowed && derivedCRS &&
                         conv->isEquivalentTo(
                             derivedCRS->derivingConversion().get(),
                             util::IComparable::Criterion::EQUIVALENT)) {
-                        op->setCRSs(concatOpTargetCRS, NN_NO_CHECK(l_sourceCRS),
-                                    nullptr);
                         op = op->inverse();
                     }
-                    op->setCRSs(NN_NO_CHECK(l_sourceCRS), concatOpTargetCRS,
-                                nullptr);
+                    setCRSsUpdateInverse(op.get(), NN_NO_CHECK(l_sourceCRS),
+                                         concatOpTargetCRS);
                 }
             }
         } else if (conv && i > 0 && i < operationsInOut.size() - 1) {
@@ -458,16 +464,17 @@ void ConcatenatedOperation::fixStepsDirection(
                 // If the sourceCRS is a projectedCRS and the target a
                 // geographic one, then we must inverse the operation. See
                 // https://github.com/OSGeo/PROJ/issues/2817
-                if (dynamic_cast<const crs::ProjectedCRS *>(
+                if (fixDirectionAllowed &&
+                    dynamic_cast<const crs::ProjectedCRS *>(
                         l_sourceCRS.get()) &&
                     dynamic_cast<const crs::GeographicCRS *>(
                         l_targetCRS.get())) {
-                    op->setCRSs(NN_NO_CHECK(l_targetCRS),
-                                NN_NO_CHECK(l_sourceCRS), nullptr);
                     op = op->inverse();
+                    setCRSsUpdateInverse(op.get(), NN_NO_CHECK(l_sourceCRS),
+                                         NN_NO_CHECK(l_targetCRS));
                 } else {
-                    op->setCRSs(NN_NO_CHECK(l_sourceCRS),
-                                NN_NO_CHECK(l_targetCRS), nullptr);
+                    setCRSsUpdateInverse(op.get(), NN_NO_CHECK(l_sourceCRS),
+                                         NN_NO_CHECK(l_targetCRS));
 
                     // Deal with special case of
                     // https://github.com/OSGeo/PROJ/issues/4116 where EPSG:7989
@@ -477,7 +484,7 @@ void ConcatenatedOperation::fixStepsDirection(
                     const auto nPosTo = conv->nameStr().find(" to ");
                     const auto nPosToNextOp =
                         operationsInOut[i + 1]->nameStr().find(" to ");
-                    if (nPosTo != std::string::npos &&
+                    if (fixDirectionAllowed && nPosTo != std::string::npos &&
                         nPosToNextOp != std::string::npos) {
                         const std::string convTo =
                             conv->nameStr().substr(nPosTo + strlen(" to "));
@@ -493,11 +500,10 @@ void ConcatenatedOperation::fixStepsDirection(
                             operationsInOut[i + 1] =
                                 operationsInOut[i + 1]->inverse();
 
-                            op->setCRSs(
-                                NN_NO_CHECK(l_sourceCRS),
+                            setCRSsUpdateInverse(
+                                op.get(), NN_NO_CHECK(l_sourceCRS),
                                 NN_NO_CHECK(
-                                    operationsInOut[i + 1]->sourceCRS()),
-                                nullptr);
+                                    operationsInOut[i + 1]->sourceCRS()));
                         }
                     }
                 }
@@ -510,8 +516,8 @@ void ConcatenatedOperation::fixStepsDirection(
                 if (vertCRS && ends_with(l_sourceCRS->nameStr(), " height") &&
                     &vertCRS->coordinateSystem()->axisList()[0]->direction() ==
                         &cs::AxisDirection::UP) {
-                    op->setCRSs(
-                        NN_NO_CHECK(l_sourceCRS),
+                    setCRSsUpdateInverse(
+                        op.get(), NN_NO_CHECK(l_sourceCRS),
                         crs::VerticalCRS::create(
                             util::PropertyMap().set(
                                 common::IdentifiedObject::NAME_KEY,
@@ -529,8 +535,7 @@ void ConcatenatedOperation::fixStepsDirection(
                                     "D", cs::AxisDirection::DOWN,
                                     vertCRS->coordinateSystem()
                                         ->axisList()[0]
-                                        ->unit()))),
-                        nullptr);
+                                        ->unit()))));
                 }
             }
         } else if (!conv && l_sourceCRS && l_targetCRS) {
@@ -547,7 +552,8 @@ void ConcatenatedOperation::fixStepsDirection(
             if (areCRSMoreOrLessEquivalent(l_sourceCRS.get(),
                                            prevOpTarget.get())) {
                 // do nothing
-            } else if (areCRSMoreOrLessEquivalent(l_targetCRS.get(),
+            } else if (fixDirectionAllowed &&
+                       areCRSMoreOrLessEquivalent(l_targetCRS.get(),
                                                   prevOpTarget.get())) {
                 op = op->inverse();
             }
@@ -607,8 +613,8 @@ void ConcatenatedOperation::fixStepsDirection(
                      transf->parameterValue(
                          PROJ_WKT2_PARAMETER_LATITUDE_LONGITUDE_ELLIPOISDAL_HEIGHT_DIFFERENCE_FILE,
                          0))) {
-                    op->setCRSs(NN_NO_CHECK(prevOpTarget), concatOpTargetCRS,
-                                nullptr);
+                    setCRSsUpdateInverse(op.get(), NN_NO_CHECK(prevOpTarget),
+                                         concatOpTargetCRS);
                 }
             }
         }
@@ -659,7 +665,7 @@ void ConcatenatedOperation::fixStepsDirection(
  * @param checkExtent Whether we should check the non-emptiness of the
  * intersection
  * of the extents of the operations
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 CoordinateOperationNNPtr ConcatenatedOperation::createComputeMetadata(
     const std::vector<CoordinateOperationNNPtr> &operationsIn,

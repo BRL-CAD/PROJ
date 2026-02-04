@@ -22,7 +22,7 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]')"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Requirements
         run: |
@@ -32,19 +32,69 @@ jobs:
       - name: Run cppcheck test
         run: ./scripts/cppcheck.sh
 
-  other_checks:
+  cppcheck_master:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Requirements
         run: |
-            sudo apt-get install python3-pip
-            sudo pip3 install cffconvert
+          sudo apt update
+          sudo apt install -y --no-install-recommends git cmake g++ make
+
+      - name: Build cppcheck
+        run: |
+          git clone https://github.com/danmar/cppcheck
+          cd cppcheck
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+          sudo make install
+          cd ../..
+
+      - name: Run cppcheck test (on push events)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          ./scripts/cppcheck.sh
+
+      - name: Run cppcheck test, but ignore failures (on pull request)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          # Do not fail the job. This is just used as a tool to monitor how we are regarding recent cppcheck
+          ./scripts/cppcheck.sh || /bin/true
+
+  code_quality_checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect missing includes
+        run: ./scripts/detect_missing_include.sh
+
+  other_checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Requirements
+        run: |
+            sudo apt-get install -y --no-install-recommends python3-pip
+            sudo apt-get remove -y python3-jsonschema
+            sudo pip3 install --break-system-packages cffconvert
 
       - name: Validate citation file
         run: |
             cffconvert --validate
             cffconvert -f bibtex
             cffconvert -f apalike
+
+  linting:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+      - uses: pre-commit/action@v3.0.1

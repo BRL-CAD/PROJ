@@ -346,7 +346,7 @@ static BaseObjectNNPtr buildObject(
                         }
                     }
                 }
-            } else if (dbContext && !kind.empty() && kind != "crs" &&
+            } else if (dbContext && !kind.empty() && kind != "crs_preferred" &&
                        l_user_string.find(':') == std::string::npos) {
                 std::vector<AuthorityFactory::ObjectType> allowedTypes;
                 if (kind == "operation")
@@ -360,6 +360,8 @@ static BaseObjectNNPtr buildObject(
                 else if (kind == "ensemble")
                     allowedTypes.push_back(
                         AuthorityFactory::ObjectType::DATUM_ENSEMBLE);
+                else if (kind == "crs")
+                    allowedTypes.push_back(AuthorityFactory::ObjectType::CRS);
                 constexpr size_t limitResultCount = 10;
                 auto factory = AuthorityFactory::create(NN_NO_CHECK(dbContext),
                                                         std::string());
@@ -370,6 +372,7 @@ static BaseObjectNNPtr buildObject(
                         limitResultCount);
                     if (res.size() == 1) {
                         obj = res.front().as_nullable();
+                        break;
                     } else {
                         for (const auto &l_obj : res) {
                             if (Identifier::isEquivalentName(
@@ -405,6 +408,61 @@ static BaseObjectNNPtr buildObject(
             } else {
                 obj =
                     createFromUserInput(l_user_string, dbContext).as_nullable();
+                if (kind == "crs_preferred" &&
+                    dynamic_cast<CRS *>(obj.get()) == nullptr) {
+                    auto factory = AuthorityFactory::create(
+                        NN_NO_CHECK(dbContext), std::string());
+                    auto res = factory->createObjectsFromName(
+                        l_user_string, {AuthorityFactory::ObjectType::CRS},
+                        /* approximateMatch = */ false,
+                        /* limitResultCount = */ 2);
+                    if (res.size() == 1) {
+                        obj = res.front().as_nullable();
+                    } else if (res.empty()) {
+                        res = factory->createObjectsFromName(
+                            l_user_string, {AuthorityFactory::ObjectType::CRS},
+                            /* approximateMatch = */ true,
+                            /* limitResultCount = */ 2);
+                        if (res.size() == 1) {
+                            obj = res.front().as_nullable();
+                        } else {
+                            bool severalCandidates = false;
+                            BaseObjectPtr objCandidate;
+                            for (const auto &l_obj : res) {
+                                if (Identifier::isEquivalentName(
+                                        l_obj->nameStr().c_str(),
+                                        l_user_string.c_str())) {
+                                    if (objCandidate) {
+                                        severalCandidates = true;
+                                        break;
+                                    } else {
+                                        objCandidate = l_obj.as_nullable();
+                                    }
+                                }
+                            }
+                            if (severalCandidates) {
+                                std::string msg(
+                                    "several objects matching this name: ");
+                                bool first = true;
+                                for (const auto &l_obj : res) {
+                                    if (msg.size() > 200) {
+                                        msg += ", ...";
+                                        break;
+                                    }
+                                    if (!first) {
+                                        msg += ", ";
+                                    }
+                                    first = false;
+                                    msg += l_obj->nameStr();
+                                }
+                                std::cerr << context << ": " << msg
+                                          << std::endl;
+                                std::exit(1);
+                            } else if (objCandidate)
+                                obj = objCandidate;
+                        }
+                    }
+                }
             }
         }
     } catch (const std::exception &e) {
@@ -487,7 +545,7 @@ static void outputObject(
         std::cout << std::endl;
     }
 
-    const auto projStringExportable =
+    auto projStringExportable =
         nn_dynamic_pointer_cast<IPROJStringExportable>(obj);
     bool alreadyOutputted = false;
     if (projStringExportable) {
@@ -510,7 +568,7 @@ static void outputObject(
                                 dbContext, allowUseIntermediateCRS));
                 }
                 if (!objToExport) {
-                    objToExport = projStringExportable;
+                    objToExport = std::move(projStringExportable);
                 }
 
                 auto formatter = PROJStringFormatter::create(
@@ -841,6 +899,11 @@ static void outputOperationSummary(
         } catch (const std::exception &) {
         }
     }
+
+    if (op->requiresPerCoordinateInputTime()) {
+        std::cout << ", time-dependent operation";
+    }
+
     std::cout << std::endl;
 }
 
@@ -874,9 +937,9 @@ static void outputOperations(
     bool showSuperseded, bool promoteTo3D, bool normalizeAxisOrder,
     double minimumAccuracy, const OutputOptions &outputOpt, bool summary) {
     auto sourceObj = buildObject(
-        dbContext, sourceCRSStr, sourceEpoch, "crs", "source CRS", false,
-        CoordinateOperationContext::IntermediateCRSUse::NEVER, promoteTo3D,
-        normalizeAxisOrder, outputOpt.quiet);
+        dbContext, sourceCRSStr, sourceEpoch, "crs_preferred", "source CRS",
+        false, CoordinateOperationContext::IntermediateCRSUse::NEVER,
+        promoteTo3D, normalizeAxisOrder, outputOpt.quiet);
     auto sourceCRS = nn_dynamic_pointer_cast<CRS>(sourceObj);
     CoordinateMetadataPtr sourceCoordinateMetadata;
     if (!sourceCRS) {
@@ -895,9 +958,9 @@ static void outputOperations(
     }
 
     auto targetObj = buildObject(
-        dbContext, targetCRSStr, targetEpoch, "crs", "target CRS", false,
-        CoordinateOperationContext::IntermediateCRSUse::NEVER, promoteTo3D,
-        normalizeAxisOrder, outputOpt.quiet);
+        dbContext, targetCRSStr, targetEpoch, "crs_preferred", "target CRS",
+        false, CoordinateOperationContext::IntermediateCRSUse::NEVER,
+        promoteTo3D, normalizeAxisOrder, outputOpt.quiet);
     auto targetCRS = nn_dynamic_pointer_cast<CRS>(targetObj);
     CoordinateMetadataPtr targetCoordinateMetadata;
     if (!targetCRS) {
@@ -1047,6 +1110,344 @@ static void outputOperations(
 
 // ---------------------------------------------------------------------------
 
+static void suggestCompletion(const std::vector<std::string> &args) {
+#ifdef DEBUG_COMPLETION
+    for (const auto &arg : args)
+        fprintf(stderr, "'%s' ", arg.c_str());
+    fprintf(stderr, "\n");
+#endif
+
+    for (const std::string &arg : args) {
+        // Shouldn't happen, unless someone really tries to actively crash us
+        if (arg.empty())
+            return;
+    }
+
+    bool first = true;
+    if (args.empty()) {
+        try {
+            auto dbContext = DatabaseContext::create();
+            for (const auto &authName : dbContext->getAuthorities()) {
+                if (!first)
+                    printf(" ");
+                first = false;
+                printf("%s:", authName.c_str());
+            }
+            printf("\n");
+        } catch (const std::exception &) {
+        }
+        return;
+    } else if (args.size() == 1 && args[0].front() != '-' &&
+               args[0].find(':') == std::string::npos) {
+        try {
+            auto dbContext = DatabaseContext::create();
+            for (const auto &authName : dbContext->getAuthorities()) {
+                if (starts_with(authName, args[0])) {
+                    if (!first)
+                        printf(" ");
+                    first = false;
+                    printf("%s:", authName.c_str());
+                }
+            }
+        } catch (const std::exception &) {
+        }
+    }
+
+    const auto isOption = [&args](const char *opt) {
+        return args.back() == opt ||
+               (args.size() >= 2 && args[args.size() - 2] == opt);
+    };
+
+    if (isOption("-k")) {
+        printf("crs operation datum ensemble ellipsoid\n");
+        return;
+    }
+
+    if (isOption("-o")) {
+        if (starts_with(args.back(), "WKT1:"))
+            printf("GDAL ESRI\n");
+        else if (starts_with(args.back(), "WKT2:"))
+            printf("2019 2015\n");
+        else
+            printf("all PROJ WKT2:2019 WKT2:2015 WKT1:GDAL WKT1:ESRI PROJJSON "
+                   "SQL\n");
+        return;
+    }
+
+    if (isOption("--spatial-test")) {
+        printf("contains intersects\n");
+        return;
+    }
+
+    if (isOption("--crs-extent-use")) {
+        printf("none both intersection smallest\n");
+        return;
+    }
+
+    if (isOption("--grid-check")) {
+        printf("none discard_missing sort known_available\n");
+        return;
+    }
+
+    if (isOption("--pivot-crs")) {
+        if (args.back().back() == ':')
+            return;
+        printf("always if_no_direct_transformation never");
+        try {
+            auto dbContext = DatabaseContext::create();
+            for (const auto &authName : dbContext->getAuthorities()) {
+                printf(" %s:", authName.c_str());
+            }
+            printf("\n");
+        } catch (const std::exception &) {
+        }
+        return;
+    }
+
+    if (args.back()[0] == '-') {
+        const char *const knownOptions[] = {
+            "-o",
+            "-k",
+            "--summary",
+            "-q",
+            "--area",
+            "--bbox",
+            "--spatial-test",
+            "--crs-extent-use",
+            "--grid-check",
+            "--pivot-crs",
+            "--show-superseded",
+            "--hide-ballpark",
+            "--accuracy",
+            "--allow-ellipsoidal-height-as-vertical-crs",
+            "--boundcrs-to-wgs84",
+            "--authority",
+            "--main-db-path",
+            "--aux-db-path",
+            "--identify",
+            "--3d",
+            "--output-id",
+            "--c-ify",
+            "--single-line",
+            "--searchpaths",
+            "--remote-data",
+            "--list-crs",
+            "--dump-db-structure",
+            "-s",
+            "--s_epoch",
+            "-t",
+            "--t_epoch",
+        };
+
+        for (const char *opt : knownOptions) {
+            if (args.back() == opt)
+                return;
+        }
+        for (const char *opt : knownOptions) {
+            if (!first)
+                printf(" ");
+            first = false;
+            printf("%s", opt);
+        }
+        printf("\n");
+        return;
+    }
+
+    std::string lastArg = args.back();
+    for (size_t i = args.size(); i >= 1;) {
+        --i;
+        if (args[i].size() >= 2 && args[i].back() == '"') {
+            break;
+        }
+        if (args[i].size() >= 2 && args[i][0] == '"') {
+            lastArg = args[i].substr(1);
+            ++i;
+            for (; i < args.size(); ++i) {
+                lastArg += " ";
+                lastArg += args[i];
+            }
+            break;
+        }
+    }
+#ifdef DEBUG_COMPLETION
+    fprintf(stderr, "lastArg='%s'\n", lastArg.c_str());
+#endif
+
+    try {
+        auto dbContext = DatabaseContext::create();
+        const auto columnPos = args.back().find(':');
+        if (columnPos != std::string::npos) {
+            const auto authName = args.back().substr(0, columnPos);
+            const std::string codeStart =
+                columnPos + 1 < args.back().size()
+                    ? args.back().substr(columnPos + 1)
+                    : std::string();
+            auto factory = AuthorityFactory::create(dbContext, authName);
+            const auto list = factory->getCRSInfoList();
+
+            std::vector<std::string> res;
+            std::string code;
+            for (const auto &info : list) {
+                if (!info.deprecated &&
+                    (codeStart.empty() || starts_with(info.code, codeStart))) {
+                    if (res.empty())
+                        code = info.code;
+                    res.push_back(std::string(info.code).append(" -- ").append(
+                        info.name));
+                }
+            }
+            if (res.size() == 1) {
+                // If there is a single match, remove the name from the
+                // suggestion.
+                res.clear();
+                res.push_back(std::move(code));
+            }
+            for (const auto &val : res) {
+                if (!first)
+                    printf(" ");
+                first = false;
+                printf("%s", replaceAll(val, " ", "\\ ").c_str());
+            }
+            printf("\n");
+            return;
+        }
+
+        for (const char *authName : {"EPSG", ""}) {
+            auto factory =
+                AuthorityFactory::create(dbContext, std::string(authName));
+            const auto list = factory->getCRSInfoList();
+            for (const auto &info : list) {
+                if (!info.deprecated && starts_with(info.name, lastArg)) {
+                    if (!first)
+                        printf(" ");
+                    first = false;
+                    std::string val = info.name;
+                    if (args.back() == "+" || args.back() == "/") {
+                        const auto pos = val.find(args.back()[0]);
+                        if (pos != std::string::npos && pos + 1 < val.size() &&
+                            val[pos + 1] == ' ')
+                            val = val.substr(pos + 2);
+                    }
+                    printf("%s", replaceAll(val, " ", "\\ ").c_str());
+                }
+            }
+            if (!first) {
+                printf("\n");
+                break;
+            }
+        }
+
+        // If the input was ``projinfo "NAD83(HARN) / California Albers +``,
+        // then check if "NAD83(HARN) / California Albers" is a known horizontal
+        // CRS, and if so, suggest relevant potential vertical CRS.
+        const auto posSpacePlus = lastArg.find(" +");
+        if (first && posSpacePlus != std::string::npos) {
+            const std::string candidateHorizCRSName =
+                lastArg.substr(0, posSpacePlus);
+            auto factory = AuthorityFactory::create(dbContext, std::string());
+#ifdef DEBUG_COMPLETION
+            fprintf(stderr, "candidateHorizCRSName='%s'\n",
+                    candidateHorizCRSName.c_str());
+#endif
+            const auto candidateHorizCRS = factory->createObjectsFromName(
+                candidateHorizCRSName,
+                {
+                    AuthorityFactory::ObjectType::GEOGRAPHIC_2D_CRS,
+                    AuthorityFactory::ObjectType::PROJECTED_CRS,
+                    AuthorityFactory::ObjectType::ENGINEERING_CRS,
+                },
+                /* approximateMatch = */ true,
+                /* limitResultCount = */ 2);
+            if (!candidateHorizCRS.empty()) {
+                const auto &domains = dynamic_cast<const ObjectUsage *>(
+                                          candidateHorizCRS.front().get())
+                                          ->domains();
+                if (domains.size() == 1) {
+                    const auto &domain = domains[0]->domainOfValidity();
+                    if (domain && domain->geographicElements().size() == 1) {
+                        const auto bbox =
+                            dynamic_cast<const GeographicBoundingBox *>(
+                                domain->geographicElements()[0].get());
+                        if (bbox) {
+                            std::string vertCRSAuthName;
+                            const auto &codeSpace = candidateHorizCRS.front()
+                                                        ->identifiers()
+                                                        .front()
+                                                        ->codeSpace();
+                            if (codeSpace.has_value())
+                                vertCRSAuthName = *codeSpace;
+                            auto factoryVertCRS = AuthorityFactory::create(
+                                dbContext, vertCRSAuthName);
+                            const auto list = factoryVertCRS->getCRSInfoList();
+                            std::string horizAreaOfUse;
+                            if (domain->description().has_value()) {
+                                horizAreaOfUse = *(domain->description());
+                                const auto posDash = horizAreaOfUse.find(" -");
+                                if (posDash != std::string::npos)
+                                    horizAreaOfUse.resize(posDash);
+                            }
+                            for (size_t attempt = 0; first && attempt < 2;
+                                 ++attempt) {
+                                for (const auto &info : list) {
+                                    if (!info.deprecated && info.bbox_valid &&
+                                        info.type ==
+                                            AuthorityFactory::ObjectType::
+                                                VERTICAL_CRS &&
+                                        !starts_with(info.name,
+                                                     "EPSG example")) {
+                                        std::string vertAreaOfUse =
+                                            info.areaName;
+                                        const auto posDash =
+                                            vertAreaOfUse.find(" -");
+                                        if (posDash != std::string::npos)
+                                            vertAreaOfUse.resize(posDash);
+                                        bool ok = false;
+                                        if (attempt == 0 &&
+                                            !horizAreaOfUse.empty()) {
+                                            ok =
+                                                horizAreaOfUse == vertAreaOfUse;
+                                        } else if (attempt == 1 &&
+                                                   vertAreaOfUse == "World.") {
+                                            // auto vertCrsBbox =
+                                            // GeographicBoundingBox::create(info.west_lon_degree,
+                                            // info.south_lat_degree,
+                                            // info.east_lon_degree,
+                                            // info.north_lat_degree); if(
+                                            // bbox->intersects(vertCrsBbox))
+                                            { ok = true; }
+                                        }
+                                        if (ok) {
+                                            if (!first)
+                                                printf(" ");
+                                            first = false;
+#ifdef DEBUG_COMPLETION
+                                            fprintf(stderr, "'%s'\n",
+                                                    replaceAll(info.name, " ",
+                                                               "\\ ")
+                                                        .c_str());
+#endif
+                                            printf("%s", replaceAll(info.name,
+                                                                    " ", "\\ ")
+                                                             .c_str());
+                                        }
+                                    }
+                                }
+                                if (!first) {
+                                    printf("\n");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    } catch (const std::exception &) {
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 int main(int argc, char **argv) {
 
     pj_stderr_proj_lib_deprecation_warning();
@@ -1054,6 +1455,11 @@ int main(int argc, char **argv) {
     if (argc == 1) {
         std::cerr << pj_get_release() << std::endl;
         usage();
+    }
+
+    if (argc >= 3 && strcmp(argv[1], "completion") == 0) {
+        suggestCompletion(std::vector<std::string>(argv + 3, argv + argc));
+        return 0;
     }
 
     std::vector<std::string> positional_args;
@@ -1097,7 +1503,7 @@ int main(int argc, char **argv) {
     bool listCRSSpecified = false;
 
     for (int i = 1; i < argc; i++) {
-        const std::string arg(argv[i]);
+        std::string arg(argv[i]);
         if (arg == "-o" && i + 1 < argc) {
             outputSwitchSpecified = true;
             i++;
@@ -1418,7 +1824,7 @@ int main(int argc, char **argv) {
             std::cerr << "Unrecognized option: " << arg << std::endl;
             usage();
         } else {
-            positional_args.push_back(arg);
+            positional_args.push_back(std::move(arg));
         }
     }
 
@@ -1507,6 +1913,8 @@ int main(int argc, char **argv) {
                 types.insert(AuthorityFactory::ObjectType::PROJECTED_CRS);
             } else if (ci_equal(token, "compound")) {
                 types.insert(AuthorityFactory::ObjectType::COMPOUND_CRS);
+            } else if (ci_equal(token, "engineering")) {
+                types.insert(AuthorityFactory::ObjectType::ENGINEERING_CRS);
             } else {
                 std::cerr << "Unrecognized value for option --list-crs: "
                           << token << std::endl;

@@ -80,8 +80,9 @@ CREATE TABLE usage(
     auth_name TEXT CHECK (auth_name IS NULL OR length(auth_name) >= 1),
     code INTEGER_OR_TEXT CHECK (code IS NULL OR length(code) >= 1),
     object_table_name TEXT NOT NULL CHECK (object_table_name IN (
-        'geodetic_datum', 'vertical_datum',
+        'geodetic_datum', 'vertical_datum', 'engineering_datum',
         'geodetic_crs', 'projected_crs', 'vertical_crs', 'compound_crs',
+        'engineering_crs',
         'conversion', 'grid_transformation',
         'helmert_transformation', 'other_transformation', 'concatenated_operation')),
     object_auth_name TEXT NOT NULL,
@@ -165,6 +166,17 @@ CREATE TABLE vertical_datum_ensemble_member (
     CONSTRAINT unique_vertical_datum_ensemble_member UNIQUE (ensemble_auth_name, ensemble_code, sequence)
 );
 
+CREATE TABLE engineering_datum (
+    auth_name TEXT NOT NULL CHECK (length(auth_name) >= 1),
+    code INTEGER_OR_TEXT NOT NULL CHECK (length(code) >= 1),
+    name TEXT NOT NULL CHECK (length(name) >= 2),
+    publication_date TEXT, --- YYYY-MM-DD format
+    anchor TEXT,
+    anchor_epoch FLOAT,
+    deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
+    CONSTRAINT pk_engineering_datum PRIMARY KEY (auth_name, code)
+) WITHOUT ROWID;
+
 CREATE TABLE coordinate_system(
     auth_name TEXT NOT NULL CHECK (length(auth_name) >= 1),
     code INTEGER_OR_TEXT NOT NULL CHECK (length(code) >= 1),
@@ -226,6 +238,21 @@ CREATE TABLE vertical_crs(
     CONSTRAINT pk_vertical_crs PRIMARY KEY (auth_name, code),
     CONSTRAINT fk_vertical_crs_coordinate_system FOREIGN KEY (coordinate_system_auth_name, coordinate_system_code) REFERENCES coordinate_system(auth_name, code) ON DELETE CASCADE,
     CONSTRAINT fk_vertical_crs_datum FOREIGN KEY (datum_auth_name, datum_code) REFERENCES vertical_datum(auth_name, code) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE engineering_crs(
+    auth_name TEXT NOT NULL CHECK (length(auth_name) >= 1),
+    code INTEGER_OR_TEXT NOT NULL CHECK (length(code) >= 1),
+    name TEXT NOT NULL CHECK (length(name) >= 2),
+    description TEXT,
+    coordinate_system_auth_name TEXT NOT NULL,
+    coordinate_system_code INTEGER_OR_TEXT NOT NULL,
+    datum_auth_name TEXT NOT NULL,
+    datum_code INTEGER_OR_TEXT NOT NULL,
+    deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
+    CONSTRAINT pk_engineering_crs PRIMARY KEY (auth_name, code),
+    CONSTRAINT fk_engineering_crs_coordinate_system FOREIGN KEY (coordinate_system_auth_name, coordinate_system_code) REFERENCES coordinate_system(auth_name, code) ON DELETE CASCADE,
+    CONSTRAINT fk_engineering_crs_datum FOREIGN KEY (datum_auth_name, datum_code) REFERENCES engineering_datum(auth_name, code) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 -- Authorities provided by the upstream PROJ
@@ -653,7 +680,8 @@ CREATE TABLE helmert_transformation_table(
 
     CONSTRAINT pk_helmert_transformation PRIMARY KEY (auth_name, code),
     CONSTRAINT fk_helmert_transformation_source_crs FOREIGN KEY (source_crs_auth_name, source_crs_code) REFERENCES geodetic_crs(auth_name, code) ON DELETE CASCADE,
-    CONSTRAINT fk_helmert_transformation_target_crs FOREIGN KEY (target_crs_auth_name, target_crs_code) REFERENCES geodetic_crs(auth_name, code) ON DELETE CASCADE,
+    -- below not true for EPSG:10905 ("ETRS89/DREF91/2016 to Asse 2025 + Asse 2025 height (1)") whose target CRS is a compound CRS
+    -- CONSTRAINT fk_helmert_transformation_target_crs FOREIGN KEY (target_crs_auth_name, target_crs_code) REFERENCES geodetic_crs(auth_name, code) ON DELETE CASCADE,
     CONSTRAINT fk_helmert_transformation_method FOREIGN KEY (method_auth_name, method_code) REFERENCES coordinate_operation_method(auth_name, code) ON DELETE CASCADE,
     --CONSTRAINT fk_helmert_transformation_coordinate_operation FOREIGN KEY (auth_name, code) REFERENCES coordinate_operation(auth_name, code) ON DELETE CASCADE,
     CONSTRAINT fk_helmert_translation_uom FOREIGN KEY (translation_uom_auth_name, translation_uom_code) REFERENCES unit_of_measure(auth_name, code) ON DELETE CASCADE,
@@ -826,6 +854,20 @@ CREATE TABLE grid_transformation(
     grid2_param_name TEXT,
     grid2_name TEXT,
 
+    param1_auth_name TEXT,
+    param1_code INTEGER_OR_TEXT,
+    param1_name TEXT,
+    param1_value FLOAT,
+    param1_uom_auth_name TEXT,
+    param1_uom_code INTEGER_OR_TEXT,
+
+    param2_auth_name TEXT,
+    param2_code INTEGER_OR_TEXT,
+    param2_name TEXT,
+    param2_value FLOAT,
+    param2_uom_auth_name TEXT,
+    param2_uom_code INTEGER_OR_TEXT,
+
     interpolation_crs_auth_name TEXT,
     interpolation_crs_code INTEGER_OR_TEXT,
 
@@ -833,11 +875,11 @@ CREATE TABLE grid_transformation(
 
     deprecated BOOLEAN NOT NULL CHECK (deprecated IN (0, 1)),
 
-    CONSTRAINT pk_grid_transformation PRIMARY KEY (auth_name, code),
+    CONSTRAINT pk_grid_transformation PRIMARY KEY (auth_name, code)
     --CONSTRAINT fk_grid_transformation_coordinate_operation FOREIGN KEY (auth_name, code) REFERENCES coordinate_operation(auth_name, code) ON DELETE CASCADE,
     --CONSTRAINT fk_grid_transformation_source_crs FOREIGN KEY (source_crs_auth_name, source_crs_code) REFERENCES crs(auth_name, code) ON DELETE CASCADE,
     --CONSTRAINT fk_grid_transformation_target_crs FOREIGN KEY (target_crs_auth_name, target_crs_code) REFERENCES crs(auth_name, code) ON DELETE CASCADE,
-    CONSTRAINT fk_grid_transformation_interpolation_crs FOREIGN KEY (interpolation_crs_auth_name, interpolation_crs_code) REFERENCES geodetic_crs(auth_name, code) ON DELETE CASCADE
+    -- CONSTRAINT fk_grid_transformation_interpolation_crs FOREIGN KEY (interpolation_crs_auth_name, interpolation_crs_code) REFERENCES crs_view(auth_name, code) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 -- Table that describe packages/archives that contain several grids
@@ -948,6 +990,25 @@ CREATE TABLE other_transformation(
     param7_uom_auth_name TEXT,
     param7_uom_code INTEGER_OR_TEXT,
 
+    param8_auth_name TEXT,
+    param8_code INTEGER_OR_TEXT,
+    param8_name TEXT,
+    param8_value FLOAT,
+    param8_uom_auth_name TEXT,
+    param8_uom_code INTEGER_OR_TEXT,
+
+    param9_auth_name TEXT,
+    param9_code INTEGER_OR_TEXT,
+    param9_name TEXT,
+    param9_value FLOAT,
+    param9_uom_auth_name TEXT,
+    param9_uom_code INTEGER_OR_TEXT,
+
+    grid_param_auth_name TEXT,
+    grid_param_code INTEGER_OR_TEXT,
+    grid_param_name TEXT,
+    grid_name TEXT,
+
     interpolation_crs_auth_name TEXT,
     interpolation_crs_code INTEGER_OR_TEXT,
 
@@ -1002,6 +1063,7 @@ CREATE TABLE concatenated_operation_step(
     step_number INTEGER NOT NULL CHECK (step_number >= 1),
     step_auth_name TEXT NOT NULL CHECK (length(step_auth_name) >= 1),
     step_code INTEGER_OR_TEXT NOT NULL CHECK (length(step_code) >= 1),
+    step_direction TEXT DEFAULT NULL CHECK (step_direction IS NULL OR step_direction IN ('forward', 'reverse')), -- much needed extension to OGC Topic 2 ! If setting the direction on one step, it must be set on all steps.
 
     CONSTRAINT pk_concatenated_operation_step PRIMARY KEY (operation_auth_name, operation_code, step_number)
     --CONSTRAINT fk_concatenated_operation_step_to_operation FOREIGN KEY (step_auth_name, step_code) REFERENCES coordinate_operation(auth_name, code) ON DELETE CASCADE
@@ -1020,8 +1082,11 @@ CREATE TABLE geoid_model(
 CREATE TABLE alias_name(
     table_name TEXT NOT NULL CHECK (table_name IN (
         'unit_of_measure', 'celestial_body', 'ellipsoid',
-        'extent', 'prime_meridian', 'geodetic_datum', 'vertical_datum', 'geodetic_crs',
-        'projected_crs', 'vertical_crs', 'compound_crs', 'conversion', 'grid_transformation',
+        'extent', 'prime_meridian',
+        'geodetic_datum', 'vertical_datum', 'engineering_datum',
+        'geodetic_crs', 'projected_crs', 'vertical_crs', 'compound_crs',
+        'engineering_crs',
+        'conversion', 'grid_transformation',
         'helmert_transformation', 'other_transformation', 'concatenated_operation')),
     auth_name TEXT NOT NULL CHECK (length(auth_name) >= 1),
     code INTEGER_OR_TEXT NOT NULL CHECK (length(code) >= 1),
@@ -1035,15 +1100,21 @@ CREATE INDEX idx_alias_name_code ON alias_name(code);
 CREATE TABLE supersession(
     superseded_table_name TEXT NOT NULL CHECK (superseded_table_name IN (
         'unit_of_measure', 'celestial_body', 'ellipsoid',
-        'extent', 'prime_meridian', 'geodetic_datum', 'vertical_datum', 'geodetic_crs',
-        'projected_crs', 'vertical_crs', 'compound_crs', 'conversion', 'grid_transformation',
+        'extent', 'prime_meridian',
+        'geodetic_datum', 'vertical_datum', 'engineering_datum',
+        'geodetic_crs', 'projected_crs', 'vertical_crs', 'compound_crs',
+        'engineering_crs',
+        'conversion', 'grid_transformation',
         'helmert_transformation', 'other_transformation', 'concatenated_operation')),
     superseded_auth_name TEXT NOT NULL,
     superseded_code INTEGER_OR_TEXT NOT NULL,
     replacement_table_name TEXT NOT NULL CHECK (replacement_table_name IN (
         'unit_of_measure', 'celestial_body', 'ellipsoid',
-        'extent', 'prime_meridian', 'geodetic_datum', 'vertical_datum', 'geodetic_crs',
-        'projected_crs', 'vertical_crs', 'compound_crs', 'conversion', 'grid_transformation',
+        'extent', 'prime_meridian',
+        'geodetic_datum', 'vertical_datum', 'engineering_datum',
+        'geodetic_crs', 'projected_crs', 'vertical_crs', 'compound_crs',
+        'engineering_crs',
+        'conversion', 'grid_transformation',
         'helmert_transformation', 'other_transformation', 'concatenated_operation')),
     replacement_auth_name TEXT NOT NULL,
     replacement_code INTEGER_OR_TEXT NOT NULL,
@@ -1057,8 +1128,11 @@ CREATE INDEX idx_supersession ON supersession(superseded_table_name, superseded_
 CREATE TABLE deprecation(
     table_name TEXT NOT NULL CHECK (table_name IN (
         'unit_of_measure', 'celestial_body', 'ellipsoid',
-        'extent', 'prime_meridian', 'geodetic_datum', 'vertical_datum', 'geodetic_crs',
-        'projected_crs', 'vertical_crs', 'compound_crs', 'conversion', 'grid_transformation',
+        'extent', 'prime_meridian',
+        'geodetic_datum', 'vertical_datum', 'engineering_datum',
+        'geodetic_crs', 'projected_crs', 'vertical_crs', 'compound_crs',
+        'engineering_crs',
+        'conversion', 'grid_transformation',
         'helmert_transformation', 'other_transformation', 'concatenated_operation')),
     deprecated_auth_name TEXT NOT NULL,
     deprecated_code INTEGER_OR_TEXT NOT NULL,
@@ -1115,6 +1189,10 @@ CREATE VIEW crs_view AS
     SELECT CAST('compound_crs' AS TEXT) AS table_name, auth_name, code, name, CAST('compound' AS TEXT),
            description,
            deprecated FROM compound_crs
+    UNION ALL
+    SELECT CAST('engineering_crs' AS TEXT) AS table_name, auth_name, code, name, CAST('engineering' AS TEXT),
+           description,
+           deprecated FROM engineering_crs
 ;
 
 CREATE VIEW object_view AS
@@ -1131,6 +1209,8 @@ CREATE VIEW object_view AS
     SELECT CAST('geodetic_datum' AS TEXT), auth_name, code, name, CAST(CASE WHEN ensemble_accuracy IS NOT NULL THEN 'ensemble' ELSE 'datum' END AS TEXT), deprecated FROM geodetic_datum
     UNION ALL
     SELECT CAST('vertical_datum' AS TEXT), auth_name, code, name, CAST(CASE WHEN ensemble_accuracy IS NOT NULL THEN 'ensemble' ELSE 'datum' END AS TEXT), deprecated FROM vertical_datum
+    UNION ALL
+    SELECT CAST('engineering_datum' AS TEXT), auth_name, code, name, CAST(NULL AS TEXT) as type, deprecated FROM engineering_datum
     UNION ALL
     SELECT CAST('axis' AS TEXT), auth_name, code, name, CAST(NULL AS TEXT) as type, CAST(0 AS BOOLEAN) AS deprecated FROM axis
     UNION ALL
@@ -1159,6 +1239,8 @@ CREATE VIEW authority_list AS
     SELECT DISTINCT auth_name FROM geodetic_datum
     UNION
     SELECT DISTINCT auth_name FROM vertical_datum
+    UNION
+    SELECT DISTINCT auth_name FROM engineering_datum
     UNION
     SELECT DISTINCT auth_name FROM axis
     UNION

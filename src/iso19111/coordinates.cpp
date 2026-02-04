@@ -65,16 +65,15 @@ struct CoordinateMetadata::Private {
 // ---------------------------------------------------------------------------
 
 CoordinateMetadata::CoordinateMetadata(const crs::CRSNNPtr &crsIn)
-    : d(internal::make_unique<Private>(crsIn)) {}
+    : d(std::make_unique<Private>(crsIn)) {}
 
 // ---------------------------------------------------------------------------
 
 CoordinateMetadata::CoordinateMetadata(const crs::CRSNNPtr &crsIn,
                                        double coordinateEpochAsDecimalYearIn)
-    : d(internal::make_unique<Private>(
-          crsIn,
-          common::DataEpoch(common::Measure(coordinateEpochAsDecimalYearIn,
-                                            common::UnitOfMeasure::YEAR)))) {}
+    : d(std::make_unique<Private>(crsIn, common::DataEpoch(common::Measure(
+                                             coordinateEpochAsDecimalYearIn,
+                                             common::UnitOfMeasure::YEAR)))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -213,13 +212,18 @@ CoordinateMetadataNNPtr
 CoordinateMetadata::promoteTo3D(const std::string &newName,
                                 const io::DatabaseContextPtr &dbContext) const {
     auto crs = d->crs_->promoteTo3D(newName, dbContext);
-    auto coordinateMetadata(
-        d->coordinateEpoch_.has_value()
-            ? CoordinateMetadata::nn_make_shared<CoordinateMetadata>(
-                  crs, coordinateEpochAsDecimalYear())
-            : CoordinateMetadata::nn_make_shared<CoordinateMetadata>(crs));
-    coordinateMetadata->assignSelf(coordinateMetadata);
-    return coordinateMetadata;
+    if (d->coordinateEpoch_.has_value()) {
+        auto coordinateMetadata(
+            CoordinateMetadata::nn_make_shared<CoordinateMetadata>(
+                crs, coordinateEpochAsDecimalYear()));
+        coordinateMetadata->assignSelf(coordinateMetadata);
+        return coordinateMetadata;
+    } else {
+        auto coordinateMetadata(
+            CoordinateMetadata::nn_make_shared<CoordinateMetadata>(crs));
+        coordinateMetadata->assignSelf(coordinateMetadata);
+        return coordinateMetadata;
+    }
 }
 
 // ---------------------------------------------------------------------------

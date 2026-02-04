@@ -33,9 +33,9 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]')"
     steps:
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: mamba-org/setup-micromamba@v1
+      - uses: mamba-org/setup-micromamba@v2
         with:
           init-shell: bash
           environment-file: .github/workflows/mac/environment.yml

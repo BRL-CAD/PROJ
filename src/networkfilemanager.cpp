@@ -45,6 +45,7 @@
 #include "filemanager.hpp"
 #include "proj.h"
 #include "proj/internal/internal.hpp"
+#include "proj/internal/io_internal.hpp"
 #include "proj/internal/lru_cache.hpp"
 #include "proj_internal.h"
 #include "sqlite3_utils.hpp"
@@ -1595,6 +1596,13 @@ static std::string pj_context_get_bundle_path(PJ_CONTEXT *ctx) {
     return ctx->ca_bundle_path;
 }
 
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+static bool pj_context_get_native_ca(PJ_CONTEXT *ctx) {
+    pj_load_ini(ctx);
+    return ctx->native_ca;
+}
+#endif
+
 // ---------------------------------------------------------------------------
 
 CurlFileHandle::CurlFileHandle(PJ_CONTEXT *ctx, const char *url, CURL *handle)
@@ -1622,7 +1630,19 @@ CurlFileHandle::CurlFileHandle(PJ_CONTEXT *ctx, const char *url, CURL *handle)
 #if defined(SSL_OPTIONS)
     // https://curl.se/libcurl/c/CURLOPT_SSL_OPTIONS.html
     auto ssl_options = static_cast<long>(SSL_OPTIONS);
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+    if (pj_context_get_native_ca(ctx)) {
+        ssl_options = ssl_options | CURLSSLOPT_NATIVE_CA;
+    }
+#endif
     CHECK_RET(ctx, curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS, ssl_options));
+#else
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+    if (pj_context_get_native_ca(ctx)) {
+        CHECK_RET(ctx, curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS,
+                                        (long)CURLSSLOPT_NATIVE_CA));
+    }
+#endif
 #endif
 
     const auto ca_bundle_path = pj_context_get_bundle_path(ctx);
@@ -1676,7 +1696,8 @@ static double GetNewRetryDelay(int response_code, double dfOldDelay,
         (response_code == 400 && pszErrBuf &&
          strstr(pszErrBuf, "RequestTimeout")) ||
         (pszCurlError && strstr(pszCurlError, "Connection reset by peer")) ||
-        (pszCurlError && strstr(pszCurlError, "Connection timed out"))) {
+        (pszCurlError && strstr(pszCurlError, "Connection timed out")) ||
+        (pszCurlError && strstr(pszCurlError, "SSL connection timeout"))) {
         // Use an exponential backoff factor of 2 plus some random jitter
         // We don't care about cryptographic quality randomness, hence:
         // coverity[dont_call]
@@ -2316,6 +2337,17 @@ int proj_is_download_needed(PJ_CONTEXT *ctx, const char *url_or_filename,
 
 // ---------------------------------------------------------------------------
 
+static NS_PROJ::io::DatabaseContextPtr nfm_getDBcontext(PJ_CONTEXT *ctx) {
+    try {
+        return ctx->get_cpp_context()->getDatabaseContext().as_nullable();
+    } catch (const std::exception &e) {
+        pj_log(ctx, PJ_LOG_DEBUG, "%s", e.what());
+        return nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /** Download a file in the PROJ user-writable directory.
  *
  * The file will only be downloaded if it does not exist yet in the
@@ -2364,12 +2396,28 @@ int proj_download_file(PJ_CONTEXT *ctx, const char *url_or_filename,
     }
 
     const auto url(build_url(ctx, url_or_filename));
-    const char *filename = strrchr(url.c_str(), '/');
-    if (filename == nullptr)
+    const char *lastSlash = strrchr(url.c_str(), '/');
+    if (lastSlash == nullptr)
         return false;
     const auto localFilename(
         std::string(proj_context_get_user_writable_directory(ctx, true)) +
-        filename);
+        lastSlash);
+
+    // Evict potential existing (empty) entry from ctx->lookupedFiles if we
+    // have tried previously from accessing the non-existing local file.
+    // Cf https://github.com/OSGeo/PROJ/issues/4397
+    {
+        const char *short_filename = lastSlash + 1;
+        auto iter = ctx->lookupedFiles.find(short_filename);
+        if (iter != ctx->lookupedFiles.end()) {
+            ctx->lookupedFiles.erase(iter);
+        }
+
+        auto dbContext = nfm_getDBcontext(ctx);
+        if (dbContext) {
+            dbContext->invalidateGridInfo(short_filename);
+        }
+    }
 
 #ifdef _WIN32
     const int nPID = GetCurrentProcessId();

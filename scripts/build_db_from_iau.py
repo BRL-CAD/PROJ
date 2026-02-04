@@ -80,7 +80,7 @@ projection_data = [
     [45, "Mollweide, clon = 180", "Mollweide", "Longitude of natural origin", 180, "False easting", 0, "False northing", 0, None, None, None, None, None, None],
     [50, "Robinson, clon = 0", "Robinson", "Longitude of natural origin", 0, "False easting", 0, "False northing", 0, None, None, None, None, None, None],
     [55, "Robinson, clon = 180", "Robinson", "Longitude of natural origin", 180, "False easting", 0, "False northing", 0, None, None, None, None, None, None],
-    [60, "Tranverse Mercator", "Transverse Mercator", "Latitude of natural origin", 0, "Longitude of natural origin", 0, "Scale factor at natural origin", 1.0, "False easting", 0, "False northing", 0, None, None],           
+    [60, "Transverse Mercator", "Transverse Mercator", "Latitude of natural origin", 0, "Longitude of natural origin", 0, "Scale factor at natural origin", 1.0, "False easting", 0, "False northing", 0, None, None],
     [65, "Orthographic, clon = 0", "Orthographic", "Latitude of natural origin", 0, "Longitude of natural origin", 0, "False easting", 0, "False northing", 0, None, None, None, None],
     [70, "Orthographic, clon = 180", "Orthographic", "Latitude of natural origin", 0, "Longitude of natural origin", 180, "False easting", 0, "False northing", 0, None, None, None, None],
     [75, "Lambert Conic Conformal", "Lambert Conic Conformal (2SP)", "Latitude of false origin", 40, "Longitude of false origin", 0, "Latitude of 1st standard parallel", 20, "Latitude of 2nd standard parallel", 60, "Easting at false origin", 0, "Northing at false origin", 0],
@@ -164,7 +164,12 @@ def generate_projected_crs(geod_crs_code, geod_crs_name, is_west):
             cs_code = 'PROJECTED_WEST_NORTH'
         else:
             cs_auth = 'EPSG'
-            cs_code = '4400'
+            if conv_name == "North Polar":
+                cs_code = '4469'
+            elif conv_name == "South Polar":
+                cs_code = '4490'
+            else:
+                cs_code = '4400'
 
         all_sql.append("INSERT INTO projected_crs VALUES('%s',%d,'%s',NULL,'%s','%s','%s',%d,'%s',%d,NULL,0);" % (AUTH_IAU2015, pcrs_code, pcrs_name, cs_auth, cs_code, AUTH_IAU2015, geod_crs_code, AUTH_IAU2015, conv_code))
         add_usage('projected_crs', pcrs_code)

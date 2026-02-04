@@ -1,5 +1,19 @@
 exe: cct
 tests:
+
+- comment: Test version argument
+  args: --version
+  sub: ["cct(_d)?(\\.exe)?: Rel.*", "cct: Rel"]
+  stdout: "cct: Rel"
+  exitcode: 0
+
+- comment: Test help argument
+  args: -h
+  grep: "Usage: "
+  sub: ["cct(_d)?(\\.exe)?", "cct"]
+  stdout: "Usage: cct [-options]... [+operator_specs]... infile..."
+  exitcode: 0
+
 - args: -d 8 +proj=merc +R=1
   in: 90 45 0
   out: "   1.57079633     0.88137359    0.00000000           inf"
@@ -154,4 +168,10 @@ tests:
 - comment: Test cct with non existing input file
   args: +proj=noop i_do_not_exist.txt
   stderr: "Cannot open file i_do_not_exist.txt"
+  exitcode: 1
+- comment: Test robustness to non-ASCII characters (cf https://github.com/OSGeo/PROJ/issues/4528 case 1)
+  args: "-\uFF56"
+  exitcode: 1
+- comment: Test robustness to non-ASCII characters (cf https://github.com/OSGeo/PROJ/issues/4528 case 2)
+  args: "--\xF3"
   exitcode: 1

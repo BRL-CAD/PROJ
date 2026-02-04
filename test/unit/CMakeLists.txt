@@ -60,10 +60,12 @@ elseif(HAS_NETWORK)
     cmake_policy(SET CMP0135 NEW)  # for DOWNLOAD_EXTRACT_TIMESTAMP option
   endif()
 
+  set(GTEST_VERSION "1.15.2")
+
   include(FetchContent)
   FetchContent_Declare(
     googletest
-    URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip
+    URL https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.zip
     EXCLUDE_FROM_ALL  # ignored before CMake 3.28
   )
 
@@ -184,7 +186,14 @@ set_property(TEST proj_test_cpp_api
 if(TIFF_ENABLED)
   target_compile_definitions(proj_test_cpp_api PRIVATE -DTIFF_ENABLED)
 endif()
- 
+
+if(EMBED_RESOURCE_FILES)
+    target_compile_definitions(proj_test_cpp_api PRIVATE EMBED_RESOURCE_FILES)
+endif()
+if (USE_ONLY_EMBEDDED_RESOURCE_FILES)
+    target_compile_definitions(proj_test_cpp_api PRIVATE USE_ONLY_EMBEDDED_RESOURCE_FILES)
+endif()
+
 add_executable(gie_self_tests
   main.cpp
   gie_self_tests.cpp)

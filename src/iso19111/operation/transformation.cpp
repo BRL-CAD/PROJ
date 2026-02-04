@@ -91,7 +91,7 @@ Transformation::Transformation(
     const crs::CRSPtr &interpolationCRSIn, const OperationMethodNNPtr &methodIn,
     const std::vector<GeneralParameterValueNNPtr> &values,
     const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies)
-    : SingleOperation(methodIn), d(internal::make_unique<Private>()) {
+    : SingleOperation(methodIn), d(std::make_unique<Private>()) {
     setParameterValues(values);
     setCRSs(sourceCRSIn, targetCRSIn, interpolationCRSIn);
     setAccuracies(accuracies);
@@ -107,7 +107,7 @@ Transformation::~Transformation() = default;
 
 Transformation::Transformation(const Transformation &other)
     : CoordinateOperation(other), SingleOperation(other),
-      d(internal::make_unique<Private>(*other.d)) {}
+      d(std::make_unique<Private>(*other.d)) {}
 
 // ---------------------------------------------------------------------------
 
@@ -188,7 +188,8 @@ Transformation::demoteTo2D(const std::string &,
  * otherwise an empty vector is returned in case of failure.
  * @return a vector of 7 values if valid, otherwise a io::FormattingException
  * is thrown.
- * @throws io::FormattingException
+ * @throws io::FormattingException in case of error, if canThrowException is
+ * true
  */
 std::vector<double> Transformation::getTOWGS84Parameters(
     bool canThrowException) const // throw(io::FormattingException)
@@ -205,8 +206,16 @@ std::vector<double> Transformation::getTOWGS84Parameters(
     if ((paramCount == 7 &&
          ci_find(methodName, "Coordinate Frame") != std::string::npos) ||
         methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOCENTRIC ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC ||
         methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_2D ||
-        methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D) {
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_2D ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_3D ||
+        methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_GEOG3D_TO_COMPOUND) {
         sevenParamsTransform = true;
         invertRotSigns = true;
     } else if ((paramCount == 7 &&
@@ -345,7 +354,7 @@ std::vector<double> Transformation::getTOWGS84Parameters(
  * @param values Vector of GeneralOperationParameterNNPtr.
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr Transformation::create(
     const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
@@ -388,7 +397,7 @@ TransformationNNPtr Transformation::create(
  * values.size() == parameters.size()
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr
 Transformation::create(const util::PropertyMap &propertiesTransformation,
@@ -849,7 +858,7 @@ TransformationNNPtr Transformation::createTimeDependentPositionVector(
  * @param referenceEpochYear Parameter reference epoch (in decimal year)
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr Transformation::createTimeDependentCoordinateFrameRotation(
     const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
@@ -938,7 +947,7 @@ static TransformationNNPtr _createMolodensky(
  * the ellipsoids used in the target and source CRS.
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr Transformation::createMolodensky(
     const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
@@ -975,7 +984,7 @@ TransformationNNPtr Transformation::createMolodensky(
  * the ellipsoids used in the target and source CRS.
  * @param accuracies Vector of positional accuracy (might be empty).
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr Transformation::createAbridgedMolodensky(
     const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
@@ -1002,7 +1011,7 @@ TransformationNNPtr Transformation::createAbridgedMolodensky(
  * or 7 double values (Translation_X,_Y,_Z, Rotation_X,_Y,_Z, Scale_Difference)
  * passed to createPositionVector()
  * @return new Transformation.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 TransformationNNPtr Transformation::createTOWGS84(
     const crs::CRSNNPtr &sourceCRSIn,
@@ -1273,7 +1282,7 @@ TransformationNNPtr Transformation::createGeographic2DWithHeightOffsets(
         VectorOfParameters{
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LATITUDE_OFFSET),
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LONGITUDE_OFFSET),
-            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_UNDULATION)},
+            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_HEIGHT)},
         VectorOfValues{offsetLat, offsetLong, offsetHeight}, accuracies);
 }
 
@@ -1406,8 +1415,16 @@ createApproximateInverseIfPossible(const Transformation *op) {
     if ((paramCount == 7 && isCoordinateFrame &&
          !isTimeDependent(methodName)) ||
         methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOCENTRIC ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC ||
         methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_2D ||
-        methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D) {
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_2D ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_3D ||
+        methodEPSGCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D ||
+        methodEPSGCode ==
+            EPSG_CODE_METHOD_COORDINATE_FRAME_GEOG3D_TO_COMPOUND) {
         sevenParamsTransform = true;
     } else if (
         (paramCount == 15 && isCoordinateFrame &&
@@ -1554,7 +1571,8 @@ TransformationNNPtr Transformation::inverseAsTransformation() const {
 
     // For geocentric translation, the inverse is exactly the negation of
     // the parameters.
-    if (ci_find(methodName, "Geocentric translations") != std::string::npos ||
+    if ((ci_find(methodName, "Geocentric translations") != std::string::npos &&
+         ci_find(methodName, "grid") == std::string::npos) ||
         methodEPSGCode == EPSG_CODE_METHOD_GEOCENTRIC_TRANSLATION_GEOCENTRIC ||
         methodEPSGCode ==
             EPSG_CODE_METHOD_GEOCENTRIC_TRANSLATION_GEOGRAPHIC_2D ||
@@ -1679,7 +1697,7 @@ TransformationNNPtr Transformation::inverseAsTransformation() const {
                                           offsetLong.unit());
 
         const auto &offsetHeight =
-            parameterValueMeasure(EPSG_CODE_PARAMETER_GEOID_UNDULATION);
+            parameterValueMeasure(EPSG_CODE_PARAMETER_GEOID_HEIGHT);
         const common::Length newOffsetHeight(negate(offsetHeight.value()),
                                              offsetHeight.unit());
 
@@ -1724,11 +1742,12 @@ TransformationNNPtr Transformation::inverseAsTransformation() const {
     if (methodEPSGCode == EPSG_CODE_METHOD_CHANGE_VERTICAL_UNIT) {
         const double convFactor = parameterValueNumericAsSI(
             EPSG_CODE_PARAMETER_UNIT_CONVERSION_SCALAR);
+        // coverity[divide_by_zero]
+        const double invConvFactor = convFactor == 0.0 ? 0.0 : 1.0 / convFactor;
         return Private::registerInv(
             this, createChangeVerticalUnit(
                       createPropertiesForInverse(this, false, false),
-                      l_targetCRS, l_sourceCRS,
-                      common::Scale(convFactor == 0.0 ? 0.0 : 1.0 / convFactor),
+                      l_targetCRS, l_sourceCRS, common::Scale(invConvFactor),
                       coordinateOperationAccuracies()));
     }
 

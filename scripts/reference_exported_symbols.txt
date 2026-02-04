@@ -356,6 +356,8 @@ osgeo::proj::io::AuthorityFactory::createDatumEnsemble(std::string const&, std::
 osgeo::proj::io::AuthorityFactory::createDatum(std::string const&) const
 osgeo::proj::io::AuthorityFactory::create(dropbox::oxygen::nn<std::shared_ptr<osgeo::proj::io::DatabaseContext> > const&, std::string const&)
 osgeo::proj::io::AuthorityFactory::createEllipsoid(std::string const&) const
+osgeo::proj::io::AuthorityFactory::createEngineeringCRS(std::string const&) const
+osgeo::proj::io::AuthorityFactory::createEngineeringDatum(std::string const&) const
 osgeo::proj::io::AuthorityFactory::createExtent(std::string const&) const
 osgeo::proj::io::AuthorityFactory::createFromCoordinateReferenceSystemCodes(std::string const&, std::string const&) const
 osgeo::proj::io::AuthorityFactory::createFromCoordinateReferenceSystemCodes(std::string const&, std::string const&, std::string const&, std::string const&, bool, bool, bool, bool, bool, bool, std::shared_ptr<osgeo::proj::metadata::Extent> const&, std::shared_ptr<osgeo::proj::metadata::Extent> const&) const
@@ -394,6 +396,7 @@ osgeo::proj::io::DatabaseContext::getDatabaseStructure() const
 osgeo::proj::io::DatabaseContext::getInsertStatementsFor(dropbox::oxygen::nn<std::shared_ptr<osgeo::proj::common::IdentifiedObject> > const&, std::string const&, std::string const&, bool, std::vector<std::string, std::allocator<std::string> > const&)
 osgeo::proj::io::DatabaseContext::getMetadata(char const*) const
 osgeo::proj::io::DatabaseContext::getPath() const
+osgeo::proj::io::DatabaseContext::getQueryCounter() const
 osgeo::proj::io::DatabaseContext::getSqliteHandle() const
 osgeo::proj::io::DatabaseContext::getVersionedAuthoritiesFromName(std::string const&)
 osgeo::proj::io::DatabaseContext::lookForGridInfo(std::string const&, bool, std::string&, std::string&, std::string&, bool&, bool&, bool&) const
@@ -523,6 +526,7 @@ osgeo::proj::metadata::Identifier::description() const
 osgeo::proj::metadata::Identifier::~Identifier()
 osgeo::proj::metadata::Identifier::Identifier(osgeo::proj::metadata::Identifier const&)
 osgeo::proj::metadata::Identifier::isEquivalentName(char const*, char const*)
+osgeo::proj::metadata::Identifier::isEquivalentName(char const*, char const*, bool)
 osgeo::proj::metadata::Identifier::uri() const
 osgeo::proj::metadata::Identifier::version() const
 osgeo::proj::metadata::PositionalAccuracy::create(std::string const&)
@@ -820,7 +824,14 @@ pj_approx_3D_trans(PJconsts*, PJ_DIRECTION, PJ_COORD)
 pj_atof(char const*)
 pj_chomp(char*)
 pj_context_get_grid_cache_filename(pj_ctx*)
+pj_ctx::createDefault()
+pj_ctx::get_cpp_context()
+pj_ctx::~pj_ctx()
+pj_ctx::pj_ctx(pj_ctx const&)
+pj_ctx::set_ca_bundle_path(std::string const&)
+pj_ctx::set_search_paths(std::vector<std::string, std::allocator<std::string> > const&)
 pj_ell_set(pj_ctx*, ARG_list*, double*, double*)
+pj_find_file(pj_ctx*, char const*, char*, unsigned long)
 pj_fwd(PJ_LP, PJconsts*)
 pj_get_datums_ref()
 pj_get_default_ctx()
@@ -896,6 +907,10 @@ proj_coordoperation_get_towgs84_values
 proj_coordoperation_has_ballpark_transformation
 proj_coordoperation_is_instantiable
 proj_coordoperation_requires_per_coordinate_input_time
+projCppContext::clone(pj_ctx*) const
+projCppContext::getDatabaseContext()
+projCppContext::projCppContext(pj_ctx*, char const*, std::vector<std::string, std::allocator<std::string> > const&)
+projCppContext::toVector(char const* const*)
 proj_create
 proj_create_argv
 proj_create_cartesian_2D_cs
@@ -1033,6 +1048,7 @@ proj_errno_set
 proj_errno_string
 proj_factors
 proj_geod
+proj_geod_direct
 proj_get_area_of_use
 proj_get_area_of_use_ex
 proj_get_authorities_from_database
@@ -1118,6 +1134,7 @@ proj_torad
 proj_trans
 proj_trans_array
 proj_trans_bounds
+proj_trans_bounds_3D
 proj_trans_generic
 proj_trans_get_last_used_operation
 proj_unit_list_destroy

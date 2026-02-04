@@ -589,7 +589,7 @@ static const ParamMapping *const paramsGeographicTopocentric[] = {
     &paramLatTopoOrigin, &paramLongTopoOrigin, &paramHeightTopoOriginWithH0,
     nullptr};
 
-static const MethodMapping projectionMethodMappings[] = {
+static const MethodMapping gProjectionMethodMappings[] = {
     {EPSG_NAME_METHOD_TRANSVERSE_MERCATOR, EPSG_CODE_METHOD_TRANSVERSE_MERCATOR,
      "Transverse_Mercator", "tmerc", nullptr, paramsNatOriginScaleK},
 
@@ -945,9 +945,9 @@ static const MethodMapping projectionMethodMappings[] = {
 };
 
 const MethodMapping *getProjectionMethodMappings(size_t &nElts) {
-    nElts =
-        sizeof(projectionMethodMappings) / sizeof(projectionMethodMappings[0]);
-    return projectionMethodMappings;
+    nElts = sizeof(gProjectionMethodMappings) /
+            sizeof(gProjectionMethodMappings[0]);
+    return gProjectionMethodMappings;
 }
 
 #define METHOD_NAME_CODE(method)                                               \
@@ -1003,8 +1003,12 @@ const struct MethodNameCode methodNameCodesList[] = {
     METHOD_NAME_CODE(AFFINE_PARAMETRIC_TRANSFORMATION),
     METHOD_NAME_CODE(SIMILARITY_TRANSFORMATION),
     METHOD_NAME_CODE(COORDINATE_FRAME_GEOCENTRIC),
+    METHOD_NAME_CODE(COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC),
     METHOD_NAME_CODE(COORDINATE_FRAME_GEOGRAPHIC_2D),
+    METHOD_NAME_CODE(COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_2D),
     METHOD_NAME_CODE(COORDINATE_FRAME_GEOGRAPHIC_3D),
+    METHOD_NAME_CODE(COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_3D),
+    METHOD_NAME_CODE(COORDINATE_FRAME_GEOG3D_TO_COMPOUND),
     METHOD_NAME_CODE(POSITION_VECTOR_GEOCENTRIC),
     METHOD_NAME_CODE(POSITION_VECTOR_GEOGRAPHIC_2D),
     METHOD_NAME_CODE(POSITION_VECTOR_GEOGRAPHIC_3D),
@@ -1033,13 +1037,41 @@ const struct MethodNameCode methodNameCodesList[] = {
     METHOD_NAME_CODE(VERTICAL_OFFSET_AND_SLOPE),
     METHOD_NAME_CODE(NTV2),
     METHOD_NAME_CODE(NTV1),
+    METHOD_NAME_CODE(VERTICAL_OFFSET_BY_TIN_INTERPOLATION_JSON),
+    METHOD_NAME_CODE(CARTESIAN_GRID_OFFSETS_BY_TIN_INTERPOLATION_JSON),
+    METHOD_NAME_CODE(GEOGRAPHIC2D_OFFSETS_BY_TIN_INTERPOLATION_JSON),
     METHOD_NAME_CODE(NADCON),
     METHOD_NAME_CODE(NADCON5_2D),
     METHOD_NAME_CODE(NADCON5_3D),
     METHOD_NAME_CODE(VERTCON),
+    // Since EPSG 12.019
+    METHOD_NAME_CODE(GEOCENTRIC_TRANSLATIONS_GEOG2D_DOMAIN_BY_GRID_IGN),
+    // Before EPSG 12.019
     METHOD_NAME_CODE(GEOCENTRIC_TRANSLATION_BY_GRID_INTERPOLATION_IGN),
+    METHOD_NAME_CODE(VERTICALGRID_NZLVD),
+    METHOD_NAME_CODE(VERTICALGRID_BEV_AT),
+    METHOD_NAME_CODE(VERTICALGRID_GTX),
+    METHOD_NAME_CODE(VERTICALGRID_ASC),
+    METHOD_NAME_CODE(VERTICALGRID_GTG),
+    METHOD_NAME_CODE(VERTICALGRID_PL_TXT),
+    // Since EPSG 12.019
+    METHOD_NAME_CODE(VERTICAL_OFFSET_USING_NEU_VELOCITY_GRID_NTV2_VEL),
+    // Before EPSG 12.019
+    METHOD_NAME_CODE(VERTICAL_OFFSET_BY_VELOCITY_GRID_NRCAN),
     // PointMotionOperation
     METHOD_NAME_CODE(POINT_MOTION_BY_GRID_CANADA_NTV2_VEL),
+    // Since EPSG 12.019
+    METHOD_NAME_CODE(POINT_MOTION_BY_GRID_CANADA_NEU_DOMAIN_NTV2_VEL),
+    // Before EPSG 12.019
+    METHOD_NAME_CODE(
+        POINT_MOTION_GEOG3D_DOMAIN_USING_NEU_VELOCITY_GRID_NTV2_VEL),
+    METHOD_NAME_CODE(
+        POINT_MOTION_GEOCEN_DOMAIN_USING_NEU_VELOCITY_GRID_GRAVSOFT),
+    METHOD_NAME_CODE(
+        POSITION_VECTOR_GEOCENTRIC_AND_GEOCENTRIC_TRANSLATIONS_NEU_VELOCITIES_GTG),
+    METHOD_NAME_CODE(
+        GEOCENTRIC_TRANSLATIONS_BY_GRID_GTG_AND_GEOCENTRIC_TRANSLATIONS_NEU_VELOCITIES_GTG),
+    METHOD_NAME_CODE(GEOCENTRIC_TRANSLATIONS_USING_NEU_VELOCITY_GRID_GTG),
 };
 
 const MethodNameCode *getMethodNameCodes(size_t &nElts) {
@@ -1050,7 +1082,7 @@ const MethodNameCode *getMethodNameCodes(size_t &nElts) {
 #define PARAM_NAME_CODE(method)                                                \
     { EPSG_NAME_PARAMETER_##method, EPSG_CODE_PARAMETER_##method }
 
-const struct ParamNameCode paramNameCodes[] = {
+const struct ParamNameCode gParamNameCodes[] = {
     // Parameters of projection methods
     PARAM_NAME_CODE(COLATITUDE_CONE_AXIS),
     PARAM_NAME_CODE(LATITUDE_OF_NATURAL_ORIGIN),
@@ -1095,7 +1127,8 @@ const struct ParamNameCode paramNameCodes[] = {
     PARAM_NAME_CODE(VERTICAL_OFFSET),
     PARAM_NAME_CODE(EASTING_OFFSET),
     PARAM_NAME_CODE(NORTHING_OFFSET),
-    PARAM_NAME_CODE(GEOID_UNDULATION),
+    PARAM_NAME_CODE(GEOID_HEIGHT),
+    PARAM_NAME_CODE(GEOID_UNDULATION), // deprecated
     PARAM_NAME_CODE(A0),
     PARAM_NAME_CODE(A1),
     PARAM_NAME_CODE(A2),
@@ -1128,11 +1161,14 @@ const struct ParamNameCode paramNameCodes[] = {
     PARAM_NAME_CODE(EPSG_CODE_FOR_INTERPOLATION_CRS),
     // Parameters of point motion operations
     PARAM_NAME_CODE(POINT_MOTION_VELOCITY_GRID_FILE),
+    PARAM_NAME_CODE(POINT_MOTION_VELOCITY_NORTH_GRID_FILE),
+    PARAM_NAME_CODE(SOURCE_EPOCH),
+    PARAM_NAME_CODE(TARGET_EPOCH),
 };
 
 const ParamNameCode *getParamNameCodes(size_t &nElts) {
-    nElts = sizeof(paramNameCodes) / sizeof(paramNameCodes[0]);
-    return paramNameCodes;
+    nElts = sizeof(gParamNameCodes) / sizeof(gParamNameCodes[0]);
+    return gParamNameCodes;
 }
 
 static const ParamMapping paramUnitConversionScalar = {
@@ -1341,13 +1377,12 @@ static const ParamMapping paramLatitudeOffset = {
 static const ParamMapping *const paramsGeographic2DOffsets[] = {
     &paramLatitudeOffset, &paramLongitudeOffset, nullptr};
 
-static const ParamMapping paramGeoidUndulation = {
-    EPSG_NAME_PARAMETER_GEOID_UNDULATION, EPSG_CODE_PARAMETER_GEOID_UNDULATION,
-    nullptr, common::UnitOfMeasure::Type::LINEAR, nullptr};
+static const ParamMapping paramGeoidHeight = {
+    EPSG_NAME_PARAMETER_GEOID_HEIGHT, EPSG_CODE_PARAMETER_GEOID_HEIGHT, nullptr,
+    common::UnitOfMeasure::Type::LINEAR, nullptr};
 
 static const ParamMapping *const paramsGeographic2DWithHeightOffsets[] = {
-    &paramLatitudeOffset, &paramLongitudeOffset, &paramGeoidUndulation,
-    nullptr};
+    &paramLatitudeOffset, &paramLongitudeOffset, &paramGeoidHeight, nullptr};
 
 static const ParamMapping paramVerticalOffset = {
     EPSG_NAME_PARAMETER_VERTICAL_OFFSET, EPSG_CODE_PARAMETER_VERTICAL_OFFSET,
@@ -1369,6 +1404,9 @@ static const ParamMapping *const paramsCartesianGridOffsets[] = {
 
 static const ParamMapping *const paramsVerticalOffsets[] = {
     &paramVerticalOffset, nullptr};
+
+static const ParamMapping *const paramsGeographic3DToGravityRelatedHeight[] = {
+    &paramGeoidHeight, nullptr};
 
 static const ParamMapping paramInclinationInLatitude = {
     EPSG_NAME_PARAMETER_INCLINATION_IN_LATITUDE,
@@ -1475,7 +1513,14 @@ static const ParamMapping *const paramsPoleRotationNetCDFCFConvention[] = {
     &paramGridNorthPoleLatitudeNetCDF, &paramGridNorthPoleLongitudeNetCDF,
     &paramNorthPoleGridLongitudeNetCDF, nullptr};
 
-static const MethodMapping otherMethodMappings[] = {
+static const ParamMapping paramTINOffsetFile = {
+    EPSG_NAME_PARAMETER_TIN_OFFSET_FILE, EPSG_CODE_PARAMETER_TIN_OFFSET_FILE,
+    nullptr, common::UnitOfMeasure::Type::NONE, nullptr};
+
+static const ParamMapping *const paramsTINOffsetFile[] = {&paramTINOffsetFile,
+                                                          nullptr};
+
+static const MethodMapping gOtherMethodMappings[] = {
     {EPSG_NAME_METHOD_CHANGE_VERTICAL_UNIT,
      EPSG_CODE_METHOD_CHANGE_VERTICAL_UNIT, nullptr, nullptr, nullptr,
      paramsChangeVerticalUnit},
@@ -1525,12 +1570,24 @@ static const MethodMapping otherMethodMappings[] = {
     {EPSG_NAME_METHOD_COORDINATE_FRAME_GEOCENTRIC,
      EPSG_CODE_METHOD_COORDINATE_FRAME_GEOCENTRIC, nullptr, nullptr, nullptr,
      paramsHelmert7},
+    {EPSG_NAME_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC,
+     EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC, nullptr, nullptr,
+     nullptr, paramsHelmert7},
     {EPSG_NAME_METHOD_COORDINATE_FRAME_GEOGRAPHIC_2D,
      EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_2D, nullptr, nullptr, nullptr,
      paramsHelmert7},
+    {EPSG_NAME_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_2D,
+     EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_2D, nullptr,
+     nullptr, nullptr, paramsHelmert7},
     {EPSG_NAME_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D,
      EPSG_CODE_METHOD_COORDINATE_FRAME_GEOGRAPHIC_3D, nullptr, nullptr, nullptr,
      paramsHelmert7},
+    {EPSG_NAME_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_3D,
+     EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOGRAPHIC_3D, nullptr,
+     nullptr, nullptr, paramsHelmert7},
+    {EPSG_NAME_METHOD_COORDINATE_FRAME_GEOG3D_TO_COMPOUND,
+     EPSG_CODE_METHOD_COORDINATE_FRAME_GEOG3D_TO_COMPOUND, nullptr, nullptr,
+     nullptr, paramsHelmert7},
 
     {EPSG_NAME_METHOD_POSITION_VECTOR_GEOCENTRIC,
      EPSG_CODE_METHOD_POSITION_VECTOR_GEOCENTRIC, nullptr, nullptr, nullptr,
@@ -1607,6 +1664,14 @@ static const MethodMapping otherMethodMappings[] = {
     {EPSG_NAME_METHOD_VERTICAL_OFFSET, EPSG_CODE_METHOD_VERTICAL_OFFSET,
      nullptr, nullptr, nullptr, paramsVerticalOffsets},
 
+    {EPSG_NAME_METHOD_GEOGRAPHIC3D_TO_GRAVITYRELATEDHEIGHT,
+     EPSG_CODE_METHOD_GEOGRAPHIC3D_TO_GRAVITYRELATEDHEIGHT, nullptr, nullptr,
+     nullptr, paramsGeographic3DToGravityRelatedHeight},
+
+    {EPSG_NAME_METHOD_GEOGRAPHIC3D_TO_GEOG2D_GRAVITYRELATEDHEIGHT,
+     EPSG_CODE_METHOD_GEOGRAPHIC3D_TO_GEOG2D_GRAVITYRELATEDHEIGHT, nullptr,
+     nullptr, nullptr, paramsGeographic3DToGravityRelatedHeight},
+
     {EPSG_NAME_METHOD_VERTICAL_OFFSET_AND_SLOPE,
      EPSG_CODE_METHOD_VERTICAL_OFFSET_AND_SLOPE, nullptr, nullptr, nullptr,
      paramsVerticalOffsetAndSlope},
@@ -1617,9 +1682,22 @@ static const MethodMapping otherMethodMappings[] = {
     {EPSG_NAME_METHOD_NTV1, EPSG_CODE_METHOD_NTV1, nullptr, nullptr, nullptr,
      paramsNTV2},
 
-    {EPSG_NAME_METHOD_GEOCENTRIC_TRANSLATION_BY_GRID_INTERPOLATION_IGN,
-     EPSG_CODE_METHOD_GEOCENTRIC_TRANSLATION_BY_GRID_INTERPOLATION_IGN, nullptr,
-     nullptr, nullptr, paramsGeocentricTranslationGridInterpolationIGN},
+    {EPSG_NAME_METHOD_GEOCENTRIC_TRANSLATIONS_GEOG2D_DOMAIN_BY_GRID_IGN,
+     EPSG_CODE_METHOD_GEOCENTRIC_TRANSLATIONS_GEOG2D_DOMAIN_BY_GRID_IGN,
+     nullptr, nullptr, nullptr,
+     paramsGeocentricTranslationGridInterpolationIGN},
+
+    {EPSG_NAME_METHOD_VERTICAL_OFFSET_BY_TIN_INTERPOLATION_JSON,
+     EPSG_CODE_METHOD_VERTICAL_OFFSET_BY_TIN_INTERPOLATION_JSON, nullptr,
+     nullptr, nullptr, paramsTINOffsetFile},
+
+    {EPSG_NAME_METHOD_CARTESIAN_GRID_OFFSETS_BY_TIN_INTERPOLATION_JSON,
+     EPSG_CODE_METHOD_CARTESIAN_GRID_OFFSETS_BY_TIN_INTERPOLATION_JSON, nullptr,
+     nullptr, nullptr, paramsTINOffsetFile},
+
+    {EPSG_NAME_METHOD_GEOGRAPHIC2D_OFFSETS_BY_TIN_INTERPOLATION_JSON,
+     EPSG_CODE_METHOD_GEOGRAPHIC2D_OFFSETS_BY_TIN_INTERPOLATION_JSON, nullptr,
+     nullptr, nullptr, paramsTINOffsetFile},
 
     {EPSG_NAME_METHOD_NADCON, EPSG_CODE_METHOD_NADCON, nullptr, nullptr,
      nullptr, paramsNADCON},
@@ -1638,17 +1716,21 @@ static const MethodMapping otherMethodMappings[] = {
     {EPSG_NAME_METHOD_POINT_MOTION_BY_GRID_CANADA_NTV2_VEL,
      EPSG_CODE_METHOD_POINT_MOTION_BY_GRID_CANADA_NTV2_VEL, nullptr, nullptr,
      nullptr, paramsPointMotionOperationByVelocityGrid},
+
+    {EPSG_NAME_METHOD_POINT_MOTION_GEOG3D_DOMAIN_USING_NEU_VELOCITY_GRID_NTV2_VEL,
+     EPSG_CODE_METHOD_POINT_MOTION_GEOG3D_DOMAIN_USING_NEU_VELOCITY_GRID_NTV2_VEL,
+     nullptr, nullptr, nullptr, paramsPointMotionOperationByVelocityGrid},
 };
 
 const MethodMapping *getOtherMethodMappings(size_t &nElts) {
-    nElts = sizeof(otherMethodMappings) / sizeof(otherMethodMappings[0]);
-    return otherMethodMappings;
+    nElts = sizeof(gOtherMethodMappings) / sizeof(gOtherMethodMappings[0]);
+    return gOtherMethodMappings;
 }
 
 // ---------------------------------------------------------------------------
 
 PROJ_NO_INLINE const MethodMapping *getMapping(int epsg_code) noexcept {
-    for (const auto &mapping : projectionMethodMappings) {
+    for (const auto &mapping : gProjectionMethodMappings) {
         if (mapping.epsg_code == epsg_code) {
             return &mapping;
         }
@@ -1661,7 +1743,7 @@ PROJ_NO_INLINE const MethodMapping *getMapping(int epsg_code) noexcept {
 const MethodMapping *getMapping(const OperationMethod *method) noexcept {
     const std::string &name(method->nameStr());
     const int epsg_code = method->getEPSGCode();
-    for (const auto &mapping : projectionMethodMappings) {
+    for (const auto &mapping : gProjectionMethodMappings) {
         if ((epsg_code != 0 && mapping.epsg_code == epsg_code) ||
             metadata::Identifier::isEquivalentName(mapping.wkt2_name,
                                                    name.c_str())) {
@@ -1679,7 +1761,7 @@ const MethodMapping *getMappingFromWKT1(const std::string &wkt1_name) noexcept {
         return getMapping(EPSG_CODE_METHOD_TRANSVERSE_MERCATOR);
     }
 
-    for (const auto &mapping : projectionMethodMappings) {
+    for (const auto &mapping : gProjectionMethodMappings) {
         if (mapping.wkt1_name && metadata::Identifier::isEquivalentName(
                                      mapping.wkt1_name, wkt1_name.c_str())) {
             return &mapping;
@@ -1690,13 +1772,13 @@ const MethodMapping *getMappingFromWKT1(const std::string &wkt1_name) noexcept {
 // ---------------------------------------------------------------------------
 
 const MethodMapping *getMapping(const char *wkt2_name) noexcept {
-    for (const auto &mapping : projectionMethodMappings) {
+    for (const auto &mapping : gProjectionMethodMappings) {
         if (metadata::Identifier::isEquivalentName(mapping.wkt2_name,
                                                    wkt2_name)) {
             return &mapping;
         }
     }
-    for (const auto &mapping : otherMethodMappings) {
+    for (const auto &mapping : gOtherMethodMappings) {
         if (metadata::Identifier::isEquivalentName(mapping.wkt2_name,
                                                    wkt2_name)) {
             return &mapping;
@@ -1710,7 +1792,7 @@ const MethodMapping *getMapping(const char *wkt2_name) noexcept {
 std::vector<const MethodMapping *>
 getMappingsFromPROJName(const std::string &projName) {
     std::vector<const MethodMapping *> res;
-    for (const auto &mapping : projectionMethodMappings) {
+    for (const auto &mapping : gProjectionMethodMappings) {
         if (mapping.proj_name_main && projName == mapping.proj_name_main) {
             res.push_back(&mapping);
         }

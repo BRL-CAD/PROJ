@@ -196,7 +196,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
     coordinateTransformer(PJ_CONTEXT *ctx) const;
 
     /** \brief Return the inverse of the coordinate operation.
-     * @throw util::UnsupportedOperationException
+     *
+     * \throw util::UnsupportedOperationException if inverse is not available
      */
     PROJ_DLL virtual CoordinateOperationNNPtr inverse() const = 0;
 
@@ -239,6 +240,10 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
     PROJ_INTERNAL void setCRSs(const crs::CRSNNPtr &sourceCRSIn,
                                const crs::CRSNNPtr &targetCRSIn,
                                const crs::CRSPtr &interpolationCRSIn);
+    PROJ_INTERNAL void
+    setCRSsUpdateInverse(const crs::CRSNNPtr &sourceCRSIn,
+                         const crs::CRSNNPtr &targetCRSIn,
+                         const crs::CRSPtr &interpolationCRSIn);
     PROJ_INTERNAL void
     setInterpolationCRS(const crs::CRSPtr &interpolationCRSIn);
     PROJ_INTERNAL void setCRSs(const CoordinateOperation *in,
@@ -1754,6 +1759,7 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
     PROJ_INTERNAL void _exportToPROJString(io::PROJStringFormatter *formatter)
         const override; // throw(FormattingException)
 
+    PROJ_FRIEND(CoordinateOperation);
     PROJ_FRIEND(CoordinateOperationFactory);
     PROJ_FRIEND(SingleOperation);
     PROJ_INTERNAL TransformationNNPtr inverseAsTransformation() const;
@@ -1903,10 +1909,10 @@ class PROJ_GCC_DLL ConcatenatedOperation final : public CoordinateOperation {
         const override; // throw(FormattingException)
 
     PROJ_INTERNAL static void
-    fixStepsDirection(const crs::CRSNNPtr &concatOpSourceCRS,
-                      const crs::CRSNNPtr &concatOpTargetCRS,
-                      std::vector<CoordinateOperationNNPtr> &operationsInOut,
-                      const io::DatabaseContextPtr &dbContext);
+    fixSteps(const crs::CRSNNPtr &concatOpSourceCRS,
+             const crs::CRSNNPtr &concatOpTargetCRS,
+             std::vector<CoordinateOperationNNPtr> &operationsInOut,
+             const io::DatabaseContextPtr &dbContext, bool fixDirectionAllowed);
     //! @endcond
 
   protected:
@@ -1925,6 +1931,11 @@ class PROJ_GCC_DLL ConcatenatedOperation final : public CoordinateOperation {
     PROJ_OPAQUE_PRIVATE_DATA
     ConcatenatedOperation &
     operator=(const ConcatenatedOperation &other) = delete;
+
+    PROJ_INTERNAL
+    static void setCRSsUpdateInverse(CoordinateOperation *co,
+                                     const crs::CRSNNPtr &sourceCRS,
+                                     const crs::CRSNNPtr &targetCRS);
 };
 
 // ---------------------------------------------------------------------------
